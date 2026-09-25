@@ -1,10 +1,149 @@
 {
-  "model": "yolo11n.pt",
-  "confidence": 0.45,
-  "zone": {
-    "id": "ZONE_01",
-    "name": "area de risco principal",
-    "polygon": [[0.15, 0.25], [0.85, 0.25], [0.95, 0.95], [0.05, 0.95]]
+  "cameras": [
+    {
+      "camera_id": "cam_frente_esq",
+      "source": "0",
+      "width": 1280,
+      "height": 720,
+      "fps": 15
+    },
+    {
+      "camera_id": "cam_frente_dir",
+      "source": "1",
+      "width": 1280,
+      "height": 720,
+      "fps": 15
+    },
+    {
+      "camera_id": "cam_tras_esq",
+      "source": "2",
+      "width": 1280,
+      "height": 720,
+      "fps": 15
+    },
+    {
+      "camera_id": "cam_tras_dir",
+      "source": "3",
+      "width": 1280,
+      "height": 720,
+      "fps": 15
+    }
+  ],
+  "zones": [
+    {
+      "zone_id": "zona_frente_esq",
+      "camera_id": "cam_frente_esq",
+      "label": "Zona Frente Esq",
+      "points": [
+        {
+          "x": 0.1,
+          "y": 0.3
+        },
+        {
+          "x": 0.9,
+          "y": 0.3
+        },
+        {
+          "x": 0.9,
+          "y": 0.95
+        },
+        {
+          "x": 0.1,
+          "y": 0.95
+        }
+      ]
+    },
+    {
+      "zone_id": "zona_frente_dir",
+      "camera_id": "cam_frente_dir",
+      "label": "Zona Frente Dir",
+      "points": [
+        {
+          "x": 0.1,
+          "y": 0.3
+        },
+        {
+          "x": 0.9,
+          "y": 0.3
+        },
+        {
+          "x": 0.9,
+          "y": 0.95
+        },
+        {
+          "x": 0.1,
+          "y": 0.95
+        }
+      ]
+    },
+    {
+      "zone_id": "zona_tras_esq",
+      "camera_id": "cam_tras_esq",
+      "label": "Zona Tras Esq",
+      "points": [
+        {
+          "x": 0.1,
+          "y": 0.3
+        },
+        {
+          "x": 0.9,
+          "y": 0.3
+        },
+        {
+          "x": 0.9,
+          "y": 0.95
+        },
+        {
+          "x": 0.1,
+          "y": 0.95
+        }
+      ]
+    },
+    {
+      "zone_id": "zona_tras_dir",
+      "camera_id": "cam_tras_dir",
+      "label": "Zona Tras Dir",
+      "points": [
+        {
+          "x": 0.1,
+          "y": 0.3
+        },
+        {
+          "x": 0.9,
+          "y": 0.3
+        },
+        {
+          "x": 0.9,
+          "y": 0.95
+        },
+        {
+          "x": 0.1,
+          "y": 0.95
+        }
+      ]
+    }
+  ],
+  "detector": {
+    "model_path": "yolo11n.pt",
+    "confidence_threshold": 0.45,
+    "iou_threshold": 0.5,
+    "device": "cpu"
   },
-  "output_dir": "artifacts"
+  "rules": {
+    "confirmation_frames": 3,
+    "cooldown_s": 10.0,
+    "hysteresis_frames": 5
+  },
+  "alarm": {
+    "sound_file": null,
+    "volume": 1.0,
+    "artifacts_dir": "artifacts",
+    "save_snapshots": true,
+    "disk_min_free_mb": 500.0
+  },
+  "health": {
+    "heartbeat_interval_s": 10.0,
+    "camera_timeout_s": 5.0
+  },
+  "log_level": "INFO"
 }
