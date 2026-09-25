@@ -33,6 +33,8 @@ class EventKind(str, Enum):
     OPERATION_END     = "OPERATION_END"
     SYSTEM_READY      = "SYSTEM_READY"
     HEARTBEAT         = "HEARTBEAT"
+    PPE_NON_COMPLIANT = "PPE_NON_COMPLIANT"
+    PPE_COMPLIANT     = "PPE_COMPLIANT"
 
 
 class HealthStatus(str, Enum):
@@ -132,3 +134,50 @@ class SystemHealth:
     disk_free_bytes: int
     model_available: bool
     timestamp: float = field(default_factory=time.time)
+
+
+# ---------------------------------------------------------------------------
+# Fase 2 — EPI (PPE)
+# ---------------------------------------------------------------------------
+
+class PPEItem(str, Enum):
+    """EPI que pode ser exigido numa zona."""
+    HELMET   = "HELMET"
+    VEST     = "VEST"
+    GLOVES   = "GLOVES"
+    BOOTS    = "BOOTS"
+    GOGGLES  = "GOGGLES"
+
+
+@dataclass(frozen=True, slots=True)
+class PPEDetection:
+    """
+    Resultado da detecção de EPI para um track_id.
+
+    detected: conjunto de EPIs identificados como presentes.
+    confidence: dict PPEItem → float (confiança por item).
+    """
+    camera_id: str
+    track_id: int
+    detected: frozenset[PPEItem]
+    confidence: dict[str, float]
+    timestamp: float = field(default_factory=time.monotonic)
+
+    def missing(self, required: frozenset[PPEItem]) -> frozenset[PPEItem]:
+        return required - self.detected
+
+
+@dataclass(slots=True)
+class PPEViolation:
+    """
+    Violação de EPI confirmada após janela temporal.
+
+    Não dispara sirene — gera evidência e registro auditável.
+    """
+    track_id: int
+    camera_id: str
+    zone_id: str
+    missing_items: frozenset[PPEItem]
+    first_seen_ts: float
+    confirmed_ts: float
+    frame: Optional[object] = field(default=None, repr=False)

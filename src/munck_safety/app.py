@@ -1,10 +1,11 @@
 """
-Ponto de entrada do Munck Safety System — Fase 1.
+Ponto de entrada do Munck Safety System — Fase 2.
 
-Orquestra cameras, detector, motor de regras, alarme e health monitor.
+Fase 1: detecção de intrusão, motor de regras, health monitor.
+Fase 2: detecção de EPI, monitor de conformidade, dashboard HTTP, SQLite.
 
 Uso:
-    python -m munck_safety.app --config config/example.json --source 0
+    python -m munck_safety.app --config config/example.json
     python -m munck_safety.app --config config/example.json --operation-active --show-preview
 """
 from __future__ import annotations
@@ -17,9 +18,11 @@ import time
 from munck_safety.alarm import AlarmManager
 from munck_safety.camera import CameraCapture
 from munck_safety.config import CameraConfig, Config
+from munck_safety.dashboard import DashboardServer, EventStore
 from munck_safety.detector import PersonDetector
 from munck_safety.logging_cfg import configure_logging, get_logger
 from munck_safety.models import CameraHealth, EventKind, SafetyEvent, Severity
+from munck_safety.ppe import PPEDetector, PPEMonitor
 from munck_safety.rules import RulesEngine
 from munck_safety.utils import HealthMonitor
 
@@ -27,14 +30,12 @@ log = get_logger(__name__)
 
 
 def _parse_args(argv=None) -> argparse.Namespace:
-    p = argparse.ArgumentParser(description="Munck Safety System — Fase 1")
+    p = argparse.ArgumentParser(description="Munck Safety System — Fase 2")
     p.add_argument("--config", default="config/example.json")
     p.add_argument("--source", default=None,
-                   help="Sobrescreve source da camera 0 (webcam, arquivo, RTSP)")
-    p.add_argument("--operation-active", action="store_true",
-                   help="Iniciar com operacao ativa")
-    p.add_argument("--show-preview", action="store_true",
-                   help="Exibir preview com anotacoes (requer display)")
+                   help="Sobrescreve source da camera 0")
+    p.add_argument("--operation-active", action="store_true")
+    p.add_argument("--show-preview", action="store_true")
     return p.parse_args(argv)
 
 
@@ -48,28 +49,51 @@ def main(argv=None) -> int:
             **{**cfg.cameras[0].model_dump(), "source": args.source}
         )
 
-    log.info("system_starting", cameras=len(cfg.cameras), zones=len(cfg.zones))
+    log.info("system_starting", cameras=len(cfg.cameras), zones=len(cfg.zones),
+             ppe_zones=len(cfg.ppe_zones))
 
-    alarm = AlarmManager(cfg.alarm)
+    # --- Persistência e Dashboard ---
+    store = EventStore(cfg.dashboard.db_path, cfg.dashboard.retention_days)
+    store.purge_old()
+
+    dashboard: DashboardServer | None = None
+    if cfg.dashboard.enabled:
+        dashboard = DashboardServer(store, cfg.dashboard, cfg.alarm.artifacts_dir)
+        dashboard.start()
+
+    # --- Alarme (agora com store) ---
+    alarm = AlarmManager(cfg.alarm, store=store)
     health_monitor = HealthMonitor(cfg.health, cfg.alarm, on_event=alarm.handle)
 
+    # --- Motor de regras de intrusão ---
     engine = RulesEngine(cfg.rules, cfg.zones, on_event=alarm.handle)
     engine.operation_active = args.operation_active
 
+    # --- Detector de pessoas ---
     detector = PersonDetector(
         model_path=cfg.detector.model_path,
         confidence=cfg.detector.confidence_threshold,
         iou=cfg.detector.iou_threshold,
         device=cfg.detector.device,
     )
-
     if not detector.available:
         alarm.handle(SafetyEvent(
             kind=EventKind.MODEL_UNAVAILABLE, severity=Severity.CRITICAL,
             camera_id=None, track_id=None, zone_id=None,
-            message="Modelo nao carregado na inicializacao.",
+            message="Modelo de pessoas nao carregado na inicializacao.",
         ))
 
+    # --- Detector de EPI ---
+    ppe_detector = PPEDetector(
+        model_path=cfg.ppe_detector.model_path,
+        confidence=cfg.ppe_detector.confidence_threshold,
+        device=cfg.ppe_detector.device,
+    ) if cfg.ppe_detector.enabled else None
+
+    # --- Monitor de EPI ---
+    ppe_monitor = PPEMonitor(cfg.ppe_zones, on_event=alarm.handle)
+
+    # --- Câmeras ---
     camera_healths: dict[str, CameraHealth] = {}
 
     def on_health(h: CameraHealth) -> None:
@@ -108,6 +132,13 @@ def main(argv=None) -> int:
     signal.signal(signal.SIGTERM, _shutdown)
 
     last_health_tick = 0.0
+    last_purge_ts = time.monotonic()
+    PURGE_INTERVAL_S = 3600.0  # purge de eventos antigos a cada hora
+
+    # Mapa de zonas por câmera para o EPI monitor
+    cam_to_zones: dict[str, list[str]] = {}
+    for z in cfg.zones:
+        cam_to_zones.setdefault(z.camera_id, []).append(z.zone_id)
 
     try:
         while _running:
@@ -120,13 +151,29 @@ def main(argv=None) -> int:
                 h.last_frame_ts = frame.timestamp
                 h.online = True
 
+                # --- Detecção de pessoas ---
                 detections = detector.detect(frame.image, frame.camera_id)
+
+                # --- Motor de intrusão ---
                 engine.process(detections, frame.camera_id, frame=frame.image)
 
+                # --- Detecção e monitoramento de EPI ---
+                if ppe_detector is not None and detections:
+                    ppe_results = ppe_detector.detect(
+                        frame.image, detections, frame.camera_id
+                    )
+                    for zone_id in cam_to_zones.get(frame.camera_id, []):
+                        ppe_monitor.process(
+                            ppe_results, zone_id, frame.camera_id, frame=frame.image
+                        )
+
+                # --- Preview ---
                 if args.show_preview:
                     _render_preview(frame, detections, cfg)
 
             now = time.monotonic()
+
+            # Health tick
             if now - last_health_tick >= cfg.health.heartbeat_interval_s:
                 last_health_tick = now
                 health_monitor.tick(
@@ -135,10 +182,17 @@ def main(argv=None) -> int:
                     now=now,
                 )
 
+            # Purge periódico
+            if now - last_purge_ts >= PURGE_INTERVAL_S:
+                last_purge_ts = now
+                store.purge_old()
+
     finally:
         log.info("shutting_down")
         for cap in captures:
             cap.stop()
+        if dashboard:
+            dashboard.stop()
         if args.show_preview:
             try:
                 import cv2  # type: ignore[import-untyped]

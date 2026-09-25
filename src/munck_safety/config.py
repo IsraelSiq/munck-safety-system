@@ -69,6 +69,34 @@ class HealthConfig(BaseModel):
     camera_timeout_s: float = 5.0
 
 
+
+# ---------------------------------------------------------------------------
+# Fase 2 — Configuração de EPI
+# ---------------------------------------------------------------------------
+
+class PPEZoneConfig(BaseModel):
+    """EPIs exigidos por zona. Ausência implica zona sem requisito de EPI."""
+    zone_id: str
+    required_ppe: list[str]                    # valores de PPEItem enum
+    confirmation_window_s: float = 5.0        # janela para confirmar ausência
+    cooldown_s: float = 30.0                   # cooldown entre violações do mesmo track
+
+
+class PPEDetectorConfig(BaseModel):
+    model_path: str = "yolo11n-ppe.pt"        # modelo especializado em EPI
+    confidence_threshold: float = 0.40
+    device: str = "cpu"
+    enabled: bool = False                      # desabilitado até modelo disponível
+
+
+class DashboardConfig(BaseModel):
+    enabled: bool = True
+    host: str = "0.0.0.0"
+    port: int = 8080
+    retention_days: int = 30                  # retenção de eventos no banco
+    db_path: str = "artifacts/events.db"      # SQLite
+    page_size: int = 50
+
 class Config(BaseModel):
     cameras: list[CameraConfig]
     zones: list[ZoneConfig]
@@ -77,6 +105,9 @@ class Config(BaseModel):
     alarm: AlarmConfig = Field(default_factory=AlarmConfig)
     health: HealthConfig = Field(default_factory=HealthConfig)
     log_level: str = "INFO"
+    ppe_zones: list[PPEZoneConfig] = Field(default_factory=list)
+    ppe_detector: PPEDetectorConfig = Field(default_factory=PPEDetectorConfig)
+    dashboard: DashboardConfig = Field(default_factory=DashboardConfig)
 
     @model_validator(mode="after")
     def _validate_zone_cameras(self) -> "Config":
