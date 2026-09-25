@@ -1,9 +1,26 @@
-.venv/
+# Evidencias e snapshots — nao versionar
+artifacts/
+
+# Python
 __pycache__/
 *.py[cod]
+*.pyo
+.venv/
+*.egg-info/
+dist/
+build/
+.mypy_cache/
+.ruff_cache/
 .pytest_cache/
-artifacts/
-.env
-*.engine
+
+# Modelos YOLO baixados automaticamente
+*.pt
 *.onnx
-.DS_Store
+
+# Videos de teste locais
+videos/
+
+# IDE
+.vscode/
+.idea/
+*.swp
