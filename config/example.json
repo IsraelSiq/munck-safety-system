@@ -145,5 +145,57 @@
     "heartbeat_interval_s": 10.0,
     "camera_timeout_s": 5.0
   },
-  "log_level": "INFO"
+  "log_level": "INFO",
+  "ppe_zones": [
+    {
+      "zone_id": "zona_frente_esq",
+      "required_ppe": [
+        "HELMET",
+        "VEST"
+      ],
+      "confirmation_window_s": 5.0,
+      "cooldown_s": 30.0
+    },
+    {
+      "zone_id": "zona_frente_dir",
+      "required_ppe": [
+        "HELMET",
+        "VEST"
+      ],
+      "confirmation_window_s": 5.0,
+      "cooldown_s": 30.0
+    },
+    {
+      "zone_id": "zona_tras_esq",
+      "required_ppe": [
+        "HELMET",
+        "VEST"
+      ],
+      "confirmation_window_s": 5.0,
+      "cooldown_s": 30.0
+    },
+    {
+      "zone_id": "zona_tras_dir",
+      "required_ppe": [
+        "HELMET",
+        "VEST"
+      ],
+      "confirmation_window_s": 5.0,
+      "cooldown_s": 30.0
+    }
+  ],
+  "ppe_detector": {
+    "model_path": "yolo11n-ppe.pt",
+    "confidence_threshold": 0.4,
+    "device": "cpu",
+    "enabled": false
+  },
+  "dashboard": {
+    "enabled": true,
+    "host": "0.0.0.0",
+    "port": 8080,
+    "retention_days": 30,
+    "db_path": "artifacts/events.db",
+    "page_size": 50
+  }
 }

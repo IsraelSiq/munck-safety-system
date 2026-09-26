@@ -25,8 +25,9 @@ _SNAPSHOT_KINDS = {EventKind.INTRUSION_START, EventKind.MODEL_UNAVAILABLE}
 class AlarmManager:
     """Processa SafetyEvent e executa resposta (som + evidência)."""
 
-    def __init__(self, cfg: AlarmConfig) -> None:
+    def __init__(self, cfg: AlarmConfig, store=None) -> None:
         self._cfg = cfg
+        self._store = store  # EventStore opcional (Fase 2)
         self._artifacts = Path(cfg.artifacts_dir)
         self._artifacts.mkdir(parents=True, exist_ok=True)
         self._log_path = self._artifacts / "events.jsonl"
@@ -34,10 +35,16 @@ class AlarmManager:
 
     def handle(self, event: SafetyEvent) -> None:
         self._log_event(event)
+        snapshot_path: str | None = None
         if event.kind in _ALARM_KINDS:
             self._play_alarm()
         if event.kind in _SNAPSHOT_KINDS and self._cfg.save_snapshots:
-            self._save_snapshot(event)
+            snapshot_path = self._save_snapshot(event)
+        if self._store is not None:
+            try:
+                self._store.save(event, snapshot_path)
+            except Exception as exc:
+                log.warning("store_save_error", error=str(exc))
 
     def _play_alarm(self) -> None:
         if self._pygame_ready:
@@ -57,9 +64,9 @@ class AlarmManager:
         except Exception as exc:
             log.warning("alarm_sound_error", error=str(exc))
 
-    def _save_snapshot(self, event: SafetyEvent) -> None:
+    def _save_snapshot(self, event: SafetyEvent) -> str | None:
         if event.frame is None:
-            return
+            return None
         try:
             import cv2  # type: ignore[import-untyped]
             ts = datetime.now(tz=timezone.utc).strftime("%Y%m%dT%H%M%S%f")
@@ -67,8 +74,10 @@ class AlarmManager:
             fname = self._artifacts / f"snapshot_{ts}_{cam}_{event.kind.value}.jpg"
             cv2.imwrite(str(fname), event.frame)
             log.info("snapshot_saved", path=str(fname))
+            return str(fname)
         except Exception as exc:
             log.warning("snapshot_error", error=str(exc))
+        return None
 
     def _log_event(self, event: SafetyEvent) -> None:
         record = {
