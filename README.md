@@ -1,92 +1,239 @@
-# MUNCK SAFETY SYSTEM
+# Munck Safety System
 
-Sistema de apoio a seguranca para operacoes com caminhao Munck. O objetivo e detectar pessoas em zonas de atuacao durante uma operacao, gerar alarmes apropriados e manter evidencias auditaveis.
+> Sistema auxiliar de sinalização para operações com guindaste hidráulico (Munck).
+> Não controla o equipamento, não substitui procedimentos normativos e não é certificação de conformidade.
 
-Repositorio canonico: https://github.com/siqueiraisrael-wq/munck-safety-system
+---
 
-> Este projeto e um sistema auxiliar de sinalizacao. Ele nao controla o Munck, nao substitui procedimentos de seguranca e nao e uma certificacao de conformidade.
+## O que é
 
-## Visao do produto
+Visão computacional embarcada que monitora a área de atuação do Munck em tempo real, detecta pessoas em zonas de risco, verifica conformidade de EPI e mantém trilha de auditoria completa.
 
-```text
-4 cameras IP -> switch PoE -> Jetson Orin Nano
-                         -> deteccao/tracking
-                         -> zonas e estado da operacao
-                         -> motor de regras
-                         -> alarme sonoro, eventos e evidencias
+```
+4 câmeras IP
+    └─► switch PoE
+            └─► Jetson Orin Nano
+                    ├─► detector de pessoas (YOLO + ByteTrack)
+                    ├─► motor de regras (zonas · confirmação · cooldown)
+                    ├─► monitor de EPI  (janela temporal · conformidade)
+                    ├─► alarme sonoro + evidências
+                    └─► dashboard HTTP + SQLite
 ```
 
-A arquitetura separa a IA das regras de seguranca. O modelo informa deteccoes, confianca, posicao e `track_id`; o motor de regras decide se houve intrusao, se a operacao esta ativa, qual a severidade e qual resposta deve ocorrer.
+A IA informa detecções, confiança, posição e `track_id`.
+O motor de regras — código determinístico e testável — decide se houve intrusão, qual a severidade e qual resposta acionar.
 
-## Fase 1 - Intrusao na area de atuacao
+---
 
-Quatro cameras devem cobrir os quatro cantos do Munck. Durante uma operacao ativa, uma pessoa entrando em qualquer zona de atuacao configurada deve gerar:
+## Status das fases
 
-- alarme sonoro critico;
-- evento com camera, zona, horario, confianca e `track_id` temporario;
-- snapshot e, futuramente, clipe curto de evidencia;
-- registro de reconhecimento/atendimento do alarme.
+| Fase | Descrição | Status |
+|------|-----------|--------|
+| **0** | Requisitos, modelagem e POC | ✅ Concluída |
+| **1** | Detecção de intrusão multi-câmera | ✅ Concluída · 30/30 testes |
+| **2** | EPI, dashboard e auditoria | 🔄 Implementada · pendente testes de campo |
+| **3** | Envelope dinâmico e TensorRT | 📋 Planejada |
 
-A Fase 1 inclui zonas estaticas inicialmente, confirmacao temporal, cooldown/histerese, reconexao de streams e alertas tecnicos para perda de cobertura. Falhas como `CAMERA_OFFLINE`, `STREAM_LOST`, `STORAGE_FULL` e `MODEL_UNAVAILABLE` nunca devem ser interpretadas como ausencia de pessoas.
+---
 
-## Fase 2 - EPI e gestao auditavel
+## Instalação
 
-Pessoas dentro da area e pessoas em zonas externas onde houver exigencia operacional podem ser avaliadas quanto aos EPIs obrigatorios. A ausencia de EPI gera alarme silencioso e nao conformidade auditavel, sem sirene.
+```bash
+git clone https://github.com/IsraelSiq/munck-safety-system
+cd munck-safety-system
 
-A Fase 2 devera incluir requisitos de EPI por operacao/zona, confirmacao por janela temporal, dashboard, filtros, revisao manual, controle de acesso, retencao de imagens, trilha de auditoria e exportacao de relatorios. Reconhecimento facial esta fora do escopo; um `track_id` temporario e suficiente.
-
-## POC v0.1 atual
-
-A base inicial valida uma fonte por execucao (arquivo, webcam ou RTSP):
-
-`video/RTSP -> pessoa -> zona poligonal -> operacao ativa -> evento -> snapshot`
-
-- Deteccao inicial da classe `person` com YOLO.
-- Zona configuravel por coordenadas normalizadas.
-- Ponto inferior central da caixa como aproximacao dos pes.
-- Evento `PERSON_ENTERED_OPERATION_ZONE` uma vez por entrada.
-- Nenhum rele, CLP, sirene fisica ou comando do Munck nesta etapa.
-
-## Validacao sem hardware
-
-Antes de comprar cameras e testar no caminhao, o software deve aceitar as mesmas interfaces para:
-
-1. videos MP4 licenciados ou gravados pela equipe;
-2. webcam em ambiente controlado;
-3. quatro videos reproduzidos em paralelo como cameras virtuais;
-4. streams RTSP locais simulados a partir de arquivos;
-5. cenarios sinteticos com overlays e trajetorias conhecidas.
-
-Videos gerados por IA podem ajudar a exercitar interface e casos raros, mas nao devem ser a evidencia principal de desempenho. A validacao deve priorizar videos reais/licenciados e gravacoes controladas.
-
-## YOLO-Pose e MediaPipe
-
-A primeira implementacao deve usar detector de pessoa + tracking + ponto dos pes. YOLO-Pose sera avaliado posteriormente para keypoints, oclusao e associacao de EPI ao corpo; ele nao substitui tracking, zonas ou regras. MediaPipe pode ser usado como experimento de webcam/landmarks, mas nao e uma dependencia obrigatoria da arquitetura multicamera no Jetson.
-
-## Execucao local
-
-```powershell
 python -m venv .venv
-.\\.venv\\Scripts\\Activate.ps1
+source .venv/bin/activate        # Linux / macOS
+# .venv\Scripts\Activate.ps1   # Windows
+
 pip install -e .
-python -m munck_safety.app --source 0 --config config/example.json --operation-active
 ```
 
-Para arquivo, use `--source videos/teste_01.mp4`. Para RTSP, use a URL da camera. Eventos e snapshots sao gravados em `artifacts/`, que nao deve ser versionado.
+### Dependências principais
 
-## Documentacao
+| Pacote | Função |
+|--------|--------|
+| `ultralytics` | YOLO + ByteTrack |
+| `opencv-python-headless` | captura e preview |
+| `shapely` | geometria de zonas (polígonos) |
+| `pydantic` | validação de configuração |
+| `structlog` | logging estruturado JSON |
+| `psutil` | monitoramento de disco/CPU |
+| `pygame` | alarme sonoro |
 
-- [POC v0.1](docs/POC-v0.1.md): contrato, fluxo, criterios e limites.
-- [Roadmap](docs/ROADMAP.md): fases, entregaveis e criterios de conclusao.
-- [Validacao sem hardware](docs/VALIDATION.md): estrategia de videos, webcam, quatro fontes virtuais e metricas.
-- [Modelagem do Munck](docs/MUNCK-MODEL.md): dados disponiveis, limites e informacoes ainda necessarias.
-- [Referencias](docs/REFERENCES.md): projetos open source relacionados.
+---
 
-## Proximas etapas
+## Uso rápido
 
-1. Criar videos deterministas com entradas e saidas esperadas.
-2. Validar a regra de intrusao com arquivo e webcam.
-3. Adicionar alarm manager abstrato, health checks e metricas.
-4. Reproduzir quatro fontes virtuais em paralelo.
-5. Preparar validacao no Jetson Orin Nano/TensorRT.
-6. Migrar para GStreamer/DeepStream quando a carga multicamera justificar.
+```bash
+# webcam — operação ativa, preview na tela
+python -m munck_safety.app \
+    --source 0 \
+    --config config/example.json \
+    --operation-active \
+    --show-preview
+
+# arquivo de vídeo (validação sem hardware)
+python -m munck_safety.app \
+    --source videos/teste_01.mp4 \
+    --config config/example.json \
+    --operation-active
+
+# URL RTSP (câmera IP real)
+python -m munck_safety.app \
+    --source rtsp://192.168.1.10:554/stream \
+    --config config/example.json \
+    --operation-active
+```
+
+Dashboard acessível em **http://localhost:8080** após iniciar o sistema.
+
+### Calibrar zonas
+
+```bash
+python scripts/calibrate_zone.py \
+    --source 0 \
+    --camera-id cam_frente_esq \
+    --output config/zones_calibrated.json
+```
+
+Clique nos vértices da zona com o mouse → Enter para salvar.
+
+---
+
+## Estrutura do projeto
+
+```
+munck-safety-system/
+├── src/munck_safety/
+│   ├── app.py                    # orquestrador principal
+│   ├── config.py                 # configuração JSON + Pydantic
+│   ├── models.py                 # contratos de dados
+│   ├── logging_cfg.py            # logging estruturado
+│   ├── camera/
+│   │   └── capture.py            # captura com reconexão automática
+│   ├── detector/
+│   │   └── person_detector.py    # YOLO + ByteTrack
+│   ├── rules/
+│   │   └── engine.py             # motor de regras (intrusão)
+│   ├── ppe/
+│   │   ├── detector.py           # detecção de EPI por IoU
+│   │   └── monitor.py            # conformidade por janela temporal
+│   ├── alarm/
+│   │   └── manager.py            # alarme sonoro + snapshot + JSONL
+│   ├── dashboard/
+│   │   ├── store.py              # persistência SQLite
+│   │   └── server.py             # HTTP server (stdlib)
+│   └── utils/
+│       └── health.py             # heartbeat + watchdog
+├── tests/                        # 56 testes unitários
+├── scripts/
+│   └── calibrate_zone.py         # calibração de zonas com mouse
+├── config/
+│   └── example.json              # configuração de referência
+└── docs/                         # documentação técnica
+```
+
+---
+
+## Configuração
+
+O sistema é configurado por um único arquivo JSON:
+
+```jsonc
+{
+  "cameras": [
+    { "camera_id": "cam_frente_esq", "source": "0", "fps": 15 },
+    { "camera_id": "cam_frente_dir", "source": "rtsp://..." }
+  ],
+  "zones": [
+    {
+      "zone_id": "zona_frente_esq",
+      "camera_id": "cam_frente_esq",
+      "label": "Zona Frente Esq",
+      "points": [
+        { "x": 0.1, "y": 0.3 }, { "x": 0.9, "y": 0.3 },
+        { "x": 0.9, "y": 0.95 }, { "x": 0.1, "y": 0.95 }
+      ]
+    }
+  ],
+  "ppe_zones": [
+    {
+      "zone_id": "zona_frente_esq",
+      "required_ppe": ["HELMET", "VEST"],
+      "confirmation_window_s": 5.0,
+      "cooldown_s": 30.0
+    }
+  ],
+  "rules": { "confirmation_frames": 3, "cooldown_s": 10.0, "hysteresis_frames": 5 },
+  "dashboard": { "enabled": true, "port": 8080 }
+}
+```
+
+Ver [`config/example.json`](config/example.json) para a configuração completa com 4 câmeras.
+
+---
+
+## Eventos gerados
+
+| Evento | Severidade | Dispara alarme |
+|--------|-----------|---------------|
+| `INTRUSION_START` | CRITICAL | ✅ Sirene |
+| `INTRUSION_END` | INFO | — |
+| `PPE_NON_COMPLIANT` | WARNING | ❌ Só evidência |
+| `PPE_COMPLIANT` | INFO | — |
+| `CAMERA_OFFLINE` | WARNING | — |
+| `STREAM_LOST` | WARNING | — |
+| `MODEL_UNAVAILABLE` | CRITICAL | — |
+| `STORAGE_FULL` | WARNING | — |
+| `HEARTBEAT` | INFO | — |
+| `SYSTEM_READY` | INFO | — |
+
+**Princípio de segurança:** qualquer falha técnica (`CAMERA_OFFLINE`, `MODEL_UNAVAILABLE` etc.) é sempre explícita — nunca interpretada como ausência de risco.
+
+---
+
+## Testes
+
+```bash
+pytest tests/ -v
+# 56 passed in 0.88s
+```
+
+Os testes cobrem os contratos de segurança críticos:
+
+- Sem operação ativa → nenhum alarme
+- Confirmação em exatamente N frames consecutivos
+- Histerese antes de encerrar evento
+- Cooldown bloqueando flooding
+- Falhas técnicas sempre explícitas
+- EPI inconclusivo não gera violação (fail-safe)
+
+---
+
+## Documentação
+
+| Documento | Conteúdo |
+|-----------|----------|
+| [ROADMAP](docs/ROADMAP.md) | Fases, entregas e critérios de conclusão |
+| [VALIDATION](docs/VALIDATION.md) | Estratégia de validação sem hardware |
+| [MUNCK-MODEL](docs/MUNCK-MODEL.md) | Modelagem do equipamento e zonas |
+| [POC-v0.1](docs/POC-v0.1.md) | Contrato e critérios da prova de conceito |
+| [REFERENCES](docs/REFERENCES.md) | Projetos e referências relacionados |
+
+---
+
+## Guia de contribuição rápida
+
+```bash
+# criar branch
+git checkout -b feat/minha-feature
+
+# rodar testes antes de commitar
+pytest tests/ -v
+
+# padrão de commit
+git commit -m "feat(rules): adiciona suporte a zona dinâmica por ângulo de lança"
+```
+
+Tipos de commit: `feat` · `fix` · `test` · `docs` · `chore` · `refactor`
