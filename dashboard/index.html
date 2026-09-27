@@ -3,135 +3,395 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>MUNCK Safety System v0.2.0</title>
+    <title>MUNCK Safety System v0.2.0 - Dashboard Executivo</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
+        html, body { height: 100%; }
         body { 
-            font-family: 'Segoe UI', sans-serif; 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             background: linear-gradient(135deg, #050810 0%, #0a0e27 100%);
             color: #e0e0e0;
-            min-height: 100vh;
-            padding: 20px;
+            display: flex;
+            flex-direction: column;
         }
-        .container { max-width: 1200px; margin: 0 auto; }
+
+        /* HEADER */
         header { 
-            text-align: center; 
-            margin: 40px 0;
+            background: linear-gradient(90deg, #1a1f3a 0%, #2d1b4e 100%);
+            padding: 20px 40px;
             border-bottom: 2px solid #ff4444;
-            padding-bottom: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
         }
-        h1 { font-size: 36px; color: white; text-shadow: 0 2px 10px rgba(255, 68, 68, 0.3); }
-        .status { display: inline-flex; gap: 8px; margin-top: 10px; padding: 8px 16px; border-radius: 20px; background: rgba(68, 255, 68, 0.1); border: 1px solid #44ff44; color: #44ff44; font-weight: 600; }
-        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin: 30px 0; }
-        .card { background: rgba(0, 0, 0, 0.4); border: 1px solid #333366; border-radius: 10px; padding: 20px; }
-        .card h3 { color: white; margin-bottom: 10px; }
-        .card ul { margin-left: 20px; }
-        .card li { margin: 5px 0; }
-        .alarm { background: rgba(255, 68, 68, 0.1); border: 2px solid #ff4444; border-radius: 10px; padding: 20px; margin: 20px 0; animation: pulse 2s infinite; }
-        .alarm h2 { color: #ff4444; }
-        @keyframes pulse { 0%, 100% { box-shadow: 0 0 30px rgba(255, 68, 68, 0.3); } 50% { box-shadow: 0 0 50px rgba(255, 68, 68, 0.5); } }
-        .stat { background: rgba(68, 136, 255, 0.1); border: 1px solid #4488ff; border-radius: 10px; padding: 15px; margin: 10px 0; }
-        .stat-label { font-size: 12px; color: #e0e0e0; }
-        .stat-value { font-size: 24px; font-weight: 700; color: white; }
-        a { color: #4488ff; text-decoration: none; }
-        a:hover { color: #44ff44; }
-        footer { text-align: center; margin-top: 40px; padding-top: 20px; border-top: 1px solid #333366; font-size: 12px; }
+        header h1 { font-size: 28px; color: white; text-shadow: 0 2px 10px rgba(255, 68, 68, 0.3); }
+        .header-info { display: flex; gap: 20px; align-items: center; }
+        .status { display: inline-flex; gap: 8px; padding: 8px 16px; border-radius: 20px; background: rgba(68, 255, 68, 0.1); border: 1px solid #44ff44; color: #44ff44; font-weight: 600; }
+        .time { font-family: 'Monaco', monospace; font-weight: 600; color: #4488ff; }
+
+        /* MAIN LAYOUT */
+        main { 
+            display: grid;
+            grid-template-columns: 1fr 380px;
+            gap: 20px;
+            padding: 20px 40px;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        /* CAMERAS SECTION */
+        .cameras-section h2 { font-size: 20px; font-weight: 700; margin-bottom: 20px; color: white; }
+        .camera-grid { 
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 16px;
+            margin-bottom: 20px;
+        }
+
+        .camera-panel {
+            background: var(--bg-darker);
+            border: 2px solid #333366;
+            border-radius: 12px;
+            overflow: hidden;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+        }
+        .camera-panel:hover { border-color: #4488ff; box-shadow: 0 4px 24px rgba(68, 136, 255, 0.2); }
+        .camera-panel.offline { opacity: 0.6; border-color: #ffaa44; }
+
+        .camera-header {
+            background: linear-gradient(90deg, rgba(68, 136, 255, 0.1) 0%, rgba(68, 136, 255, 0.05) 100%);
+            padding: 12px 16px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid #333366;
+        }
+        .camera-header h3 { font-size: 16px; font-weight: 600; color: white; }
+        .camera-status { font-size: 12px; font-weight: 600; padding: 4px 12px; border-radius: 12px; background: rgba(68, 255, 68, 0.1); border: 1px solid #44ff44; color: #44ff44; }
+        .camera-status.offline { background: rgba(255, 68, 68, 0.1); border-color: #ff4444; color: #ff4444; }
+
+        .camera-video {
+            width: 100%;
+            aspect-ratio: 16/9;
+            background: #000;
+            display: block;
+            object-fit: cover;
+        }
+
+        .camera-info {
+            padding: 12px 16px;
+            display: flex;
+            justify-content: space-between;
+            font-size: 12px;
+            color: #e0e0e0;
+            border-top: 1px solid #333366;
+            background: rgba(0, 0, 0, 0.2);
+        }
+
+        /* ALARM BANNER */
+        .alarm-banner {
+            padding: 16px 20px;
+            border-radius: 12px;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            font-weight: 700;
+            animation: pulse-alarm 0.8s infinite;
+            box-shadow: 0 0 30px rgba(255, 68, 68, 0.3);
+        }
+        .alarm-banner.critical {
+            background: linear-gradient(135deg, rgba(255, 68, 68, 0.2) 0%, rgba(255, 68, 68, 0.1) 100%);
+            border: 2px solid #ff4444;
+            color: #ff4444;
+        }
+        .alarm-icon { font-size: 28px; animation: spin 1s linear infinite; }
+        .alarm-text { flex: 1; font-size: 18px; }
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        @keyframes pulse-alarm { 0%, 100% { box-shadow: 0 0 30px rgba(255, 68, 68, 0.3); } 50% { box-shadow: 0 0 50px rgba(255, 68, 68, 0.5); } }
+
+        /* SIDEBAR */
+        .sidebar {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            overflow-y: auto;
+            padding-right: 10px;
+        }
+
+        .sidebar h2 { font-size: 16px; font-weight: 700; margin-bottom: 12px; color: white; }
+
+        /* STATS */
+        .stats-grid { display: grid; grid-template-columns: 1fr; gap: 12px; }
+        .stat-card {
+            background: linear-gradient(135deg, rgba(68, 136, 255, 0.1) 0%, rgba(68, 136, 255, 0.05) 100%);
+            border: 1px solid #333366;
+            border-radius: 10px;
+            padding: 16px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .stat-icon { font-size: 24px; }
+        .stat-content { display: flex; flex-direction: column; gap: 4px; }
+        .stat-label { font-size: 12px; color: #e0e0e0; font-weight: 600; }
+        .stat-value { font-size: 20px; font-weight: 700; color: white; }
+
+        /* LOGS */
+        .logs-container {
+            background: rgba(0, 0, 0, 0.4);
+            border: 1px solid #333366;
+            border-radius: 10px;
+            padding: 12px;
+            max-height: 500px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .log-entry {
+            padding: 10px 12px;
+            background: rgba(68, 136, 255, 0.05);
+            border-left: 3px solid #4488ff;
+            border-radius: 6px;
+            display: flex;
+            gap: 12px;
+            align-items: flex-start;
+            font-size: 12px;
+            transition: all 0.2s ease;
+        }
+        .log-entry:hover { background: rgba(68, 136, 255, 0.1); transform: translateX(4px); }
+        .log-entry.critical { background: rgba(255, 68, 68, 0.1); border-left-color: #ff4444; }
+        .log-entry.warning { background: rgba(255, 170, 68, 0.1); border-left-color: #ffaa44; }
+
+        .log-time { color: #4488ff; font-family: 'Monaco', monospace; font-weight: 700; flex-shrink: 0; }
+        .log-icon { font-size: 14px; flex-shrink: 0; }
+        .log-content { display: flex; flex-direction: column; gap: 4px; flex: 1; }
+        .log-kind { color: white; font-weight: 700; }
+        .log-message { color: #e0e0e0; opacity: 0.9; line-height: 1.3; }
+        .log-meta { color: #4488ff; font-size: 11px; margin-top: 4px; }
+
+        /* FOOTER */
+        footer {
+            background: linear-gradient(90deg, #1a1f3a 0%, #2d1b4e 100%);
+            padding: 16px 40px;
+            border-top: 1px solid #333366;
+            display: flex;
+            justify-content: space-between;
+            font-size: 12px;
+            color: #e0e0e0;
+        }
+
+        /* SCROLLBAR */
+        .logs-container::-webkit-scrollbar { width: 6px; }
+        .logs-container::-webkit-scrollbar-thumb { background: #4488ff; border-radius: 3px; }
+        .logs-container::-webkit-scrollbar-thumb:hover { background: #44ff44; }
     </style>
 </head>
 <body>
-    <div class="container">
-        <header>
-            <h1>🚨 MUNCK Safety System v0.2.0</h1>
-            <span class="status">● ONLINE - Production Ready</span>
-        </header>
-
-        <div class="alarm">
-            <h2>✅ Sistema Operacional</h2>
-            <p>Demo executiva funcional com 4 câmeras em looping, detecção de intrusão e event log em tempo real.</p>
+    <header>
+        <h1>🚨 MUNCK Safety System v0.2.0</h1>
+        <div class="header-info">
+            <span class="status">● ONLINE</span>
+            <span class="time" id="time"></span>
         </div>
+    </header>
 
-        <div class="grid">
-            <div class="card">
-                <h3>📊 Status Atual</h3>
-                <div class="stat">
-                    <div class="stat-label">Fase 1: Intrusão</div>
-                    <div class="stat-value">✅ PRODUCTION</div>
+    <main>
+        <!-- CAMERAS -->
+        <section class="cameras-section">
+            <h2>📹 Câmeras de Monitoramento</h2>
+            
+            <div class="camera-grid">
+                <div class="camera-panel">
+                    <div class="camera-header">
+                        <h3>Câmera Frente Esq</h3>
+                        <span class="camera-status">🟢 Online</span>
+                    </div>
+                    <video class="camera-video" autoplay loop muted playsinline>
+                        <source src="../../videos/test_cam_frente_esq.mp4" type="video/mp4">
+                    </video>
+                    <div class="camera-info">
+                        <span>cam_frente_esq</span>
+                        <span>1920x1080 @ 30fps</span>
+                    </div>
                 </div>
-                <div class="stat">
-                    <div class="stat-label">Fase 2: EPI+Dashboard</div>
-                    <div class="stat-value">✅ IMPLEMENTADA</div>
+
+                <div class="camera-panel">
+                    <div class="camera-header">
+                        <h3>Câmera Frente Dir</h3>
+                        <span class="camera-status offline">🔴 Offline</span>
+                    </div>
+                    <video class="camera-video" autoplay loop muted playsinline>
+                        <source src="../../videos/test_cam_frente_dir.mp4" type="video/mp4">
+                    </video>
+                    <div class="camera-info">
+                        <span>cam_frente_dir</span>
+                        <span>1920x1080 @ 30fps</span>
+                    </div>
                 </div>
-                <div class="stat">
-                    <div class="stat-label">Testes</div>
-                    <div class="stat-value">56/56 ✅</div>
+
+                <div class="camera-panel">
+                    <div class="camera-header">
+                        <h3>Câmera Trás Esq</h3>
+                        <span class="camera-status offline">🔴 Offline</span>
+                    </div>
+                    <video class="camera-video" autoplay loop muted playsinline>
+                        <source src="../../videos/test_cam_tras_esq.mp4" type="video/mp4">
+                    </video>
+                    <div class="camera-info">
+                        <span>cam_tras_esq</span>
+                        <span>1920x1080 @ 30fps</span>
+                    </div>
                 </div>
-                <div class="stat">
-                    <div class="stat-label">Eventos Gerados</div>
-                    <div class="stat-value">75 ✅</div>
+
+                <div class="camera-panel">
+                    <div class="camera-header">
+                        <h3>Câmera Trás Dir</h3>
+                        <span class="camera-status offline">🔴 Offline</span>
+                    </div>
+                    <video class="camera-video" autoplay loop muted playsinline>
+                        <source src="../../videos/test_cam_tras_dir.mp4" type="video/mp4">
+                    </video>
+                    <div class="camera-info">
+                        <span>cam_tras_dir</span>
+                        <span>1920x1080 @ 30fps</span>
+                    </div>
                 </div>
             </div>
 
-            <div class="card">
-                <h3>✨ Funcionalidades</h3>
-                <ul>
-                    <li>✅ 4 câmeras simultâneas em looping</li>
-                    <li>✅ Detecção automática de intrusão</li>
-                    <li>✅ Rastreamento persistente de pessoas</li>
-                    <li>✅ Event log estruturado</li>
-                    <li>✅ Alarmes visuais RED</li>
-                    <li>✅ Estatísticas executivas</li>
-                    <li>✅ Interface profissional escura</li>
-                </ul>
+            <div class="alarm-banner critical" id="alarm">
+                <span class="alarm-icon">🔴</span>
+                <span class="alarm-text">INTRUSÃO DETECTADA!</span>
+                <span style="font-size: 14px;">Pessoa #14 em zona_frente_esq</span>
             </div>
-        </div>
+        </section>
 
-        <div class="grid">
-            <div class="card">
-                <h3>📊 Estatísticas</h3>
-                <div class="stat">
-                    <div class="stat-label">Câmeras Online</div>
-                    <div class="stat-value">2/4 📡</div>
+        <!-- SIDEBAR -->
+        <aside class="sidebar">
+            <!-- STATS -->
+            <section>
+                <h2>📊 Estatísticas</h2>
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <span class="stat-icon">📡</span>
+                        <div class="stat-content">
+                            <span class="stat-label">Câmeras Online</span>
+                            <span class="stat-value">2/4</span>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <span class="stat-icon">⚠️</span>
+                        <div class="stat-content">
+                            <span class="stat-label">Intrusões</span>
+                            <span class="stat-value">2</span>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <span class="stat-icon">👥</span>
+                        <div class="stat-content">
+                            <span class="stat-label">Pessoas</span>
+                            <span class="stat-value">8</span>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <span class="stat-icon">⏱️</span>
+                        <div class="stat-content">
+                            <span class="stat-label">Uptime</span>
+                            <span class="stat-value">18h 45m</span>
+                        </div>
+                    </div>
                 </div>
-                <div class="stat">
-                    <div class="stat-label">Intrusões Detectadas</div>
-                    <div class="stat-value">2 ⚠️</div>
-                </div>
-                <div class="stat">
-                    <div class="stat-label">Pessoas Rastreadas</div>
-                    <div class="stat-value">8 👥</div>
-                </div>
-                <div class="stat">
-                    <div class="stat-label">Tempo Online</div>
-                    <div class="stat-value">18h 45m ⏱️</div>
-                </div>
-            </div>
+            </section>
 
-            <div class="card">
-                <h3>🚀 Próximos Passos</h3>
-                <ul>
-                    <li>✅ Demo executiva em nuvem</li>
-                    <li>⏳ Aprovação de orçamento para Jetson</li>
-                    <li>⏳ Aquisição de 4 câmeras PoE 2K</li>
-                    <li>⏳ Deploy em produção com câmeras reais</li>
-                    <li>⏳ 24h+ teste em ambiente real</li>
-                </ul>
-            </div>
-        </div>
+            <!-- LOGS -->
+            <section>
+                <h2>📝 Event Log (Real-time)</h2>
+                <div class="logs-container" id="logs">
+                    <div class="log-entry">
+                        <span class="log-time">15:47:30</span>
+                        <span class="log-icon">✅</span>
+                        <div class="log-content">
+                            <span class="log-kind">SYSTEM_READY</span>
+                            <span class="log-message">Sistema inicializado e monitorando</span>
+                        </div>
+                    </div>
+                    <div class="log-entry">
+                        <span class="log-time">15:47:45</span>
+                        <span class="log-icon">💓</span>
+                        <div class="log-content">
+                            <span class="log-kind">HEARTBEAT</span>
+                            <span class="log-message">Sistema operacional. Cameras: 2/4</span>
+                        </div>
+                    </div>
+                    <div class="log-entry critical">
+                        <span class="log-time">15:48:10</span>
+                        <span class="log-icon">🚨</span>
+                        <div class="log-content">
+                            <span class="log-kind">INTRUSION_START</span>
+                            <span class="log-message">Intrusão detectada: pessoa #14</span>
+                            <span class="log-meta">🎥 cam_frente_esq | zona_frente_esq</span>
+                        </div>
+                    </div>
+                    <div class="log-entry">
+                        <span class="log-time">15:48:18</span>
+                        <span class="log-icon">✋</span>
+                        <div class="log-content">
+                            <span class="log-kind">INTRUSION_END</span>
+                            <span class="log-message">Intrusão encerrada: pessoa #14 saiu</span>
+                        </div>
+                    </div>
+                    <div class="log-entry">
+                        <span class="log-time">15:49:00</span>
+                        <span class="log-icon">💓</span>
+                        <div class="log-content">
+                            <span class="log-kind">HEARTBEAT</span>
+                            <span class="log-message">Sistema operacional. Cameras: 2/4</span>
+                        </div>
+                    </div>
+                    <div class="log-entry critical">
+                        <span class="log-time">15:49:30</span>
+                        <span class="log-icon">🚨</span>
+                        <div class="log-content">
+                            <span class="log-kind">INTRUSION_START</span>
+                            <span class="log-message">Intrusão detectada: pessoa #25</span>
+                            <span class="log-meta">🎥 cam_tras_esq | zona_tras_esq</span>
+                        </div>
+                    </div>
+                    <div class="log-entry">
+                        <span class="log-time">15:49:35</span>
+                        <span class="log-icon">✋</span>
+                        <div class="log-content">
+                            <span class="log-kind">INTRUSION_END</span>
+                            <span class="log-message">Intrusão encerrada: pessoa #25 saiu</span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </aside>
+    </main>
 
-        <div class="card">
-            <h3>📚 Documentação & Repositório</h3>
-            <p>
-                <strong>GitHub:</strong> <a href="https://github.com/IsraelSiq/munck-safety-system" target="_blank">munck-safety-system</a><br>
-                <strong>README:</strong> Quick start + features completas<br>
-                <strong>ROADMAP:</strong> Timeline com 15+ tasks<br>
-                <strong>Deploy:</strong> Instruções para Jetson Orin Nano<br>
-            </p>
-        </div>
+    <footer>
+        <div>v0.2.0 | Fase 1+2 ✅ | 56 Testes ✅ | 75 Eventos ✅</div>
+        <div>GitHub: <a href="https://github.com/IsraelSiq/munck-safety-system" style="color: #4488ff; text-decoration: none;" target="_blank">munck-safety-system</a></div>
+    </footer>
 
-        <footer>
-            <p>MUNCK Safety System v0.2.0 | Production Ready | Desenvolvido para Operações de Grua Seguras</p>
-            <p style="margin-top: 10px; opacity: 0.7;">GitHub: https://github.com/IsraelSiq/munck-safety-system</p>
-        </footer>
-    </div>
+    <script>
+        // Update time
+        function updateTime() {
+            const now = new Date();
+            document.getElementById('time').textContent = now.toLocaleTimeString('pt-BR');
+        }
+        updateTime();
+        setInterval(updateTime, 1000);
+
+        // Alarm animation (show/hide)
+        setTimeout(() => {
+            document.getElementById('alarm').style.opacity = '0.3';
+        }, 5000);
+    </script>
 </body>
 </html>
