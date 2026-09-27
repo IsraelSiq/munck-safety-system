@@ -14,19 +14,15 @@ VIDEOS_DIR = os.path.join(BASE_DIR, 'videos')
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'munck-safety-2024'
-socketio = SocketIO(app, cors_allowed_origins="*")
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
 
 class SystemState:
     def __init__(self):
         self.running = False
         self.last_frame = {}
+        self.frame_lock = threading.Lock()
         self.events = []
-        self.stats = {
-            'cameras_online': 0,
-            'total_intrusions': 0,
-            'total_people': 0,
-            'start_time': datetime.now()
-        }
+        self.start_time = datetime.now()
 
 state = SystemState()
 
@@ -41,70 +37,76 @@ def load_events():
                         state.events.append(json.loads(line))
                     except:
                         pass
-        print(f"📊 {len(state.events)} eventos carregados")
         intrusions = [e for e in state.events if e.get('event_type') == 'INTRUSION_START']
-        print(f"🚨 {len(intrusions)} intrusoes nos dados")
+        print(f"📊 {len(state.events)} eventos | 🚨 {len(intrusions)} intrusoes")
         for i in intrusions:
-            print(f"   -> {i}")
+            print(f"   {i.get('camera_id')} | zone={i.get('zone')} | track={i.get('track_id')}")
     except Exception as e:
-        print(f"⚠️ Erro ao carregar eventos: {e}")
+        print(f"⚠️ {e}")
 
 def camera_stream(camera_id):
     while state.running:
-        if camera_id in state.last_frame:
-            frame = state.last_frame[camera_id]
-            if frame is not None:
-                ret, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
+        with state.frame_lock:
+            frame = state.last_frame.get(camera_id)
+        if frame is not None:
+            try:
+                ret, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 60])
                 if ret:
                     yield (b'--frame\r\n'
-                           b'Content-Type: image/jpeg\r\n'
-                           b'Content-Length: ' + str(len(buffer)).encode() + b'\r\n\r\n' +
+                           b'Content-Type: image/jpeg\r\n\r\n' +
                            buffer.tobytes() + b'\r\n')
-        time.sleep(0.033)
+            except Exception:
+                pass
+        time.sleep(0.1)  # 10fps - mais leve
 
 @app.route('/')
 def index():
     return send_file(os.path.join(DASHBOARD_DIR, 'index.html'))
 
-@app.route('/api/stats')
-def get_stats():
-    uptime = (datetime.now() - state.stats['start_time']).total_seconds()
-    return jsonify({
-        'cameras_online': state.stats['cameras_online'],
-        'total_intrusions': state.stats['total_intrusions'],
-        'total_people': state.stats['total_people'],
-        'uptime': int(uptime)
-    })
-
 @app.route('/camera/<camera_id>/stream')
 def camera_stream_route(camera_id):
-    return Response(camera_stream(camera_id), mimetype='multipart/x-mixed-replace; boundary=frame')
+    return Response(
+        camera_stream(camera_id),
+        mimetype='multipart/x-mixed-replace; boundary=frame',
+        headers={'Cache-Control': 'no-cache', 'Connection': 'keep-alive'}
+    )
+
+@app.route('/api/stats')
+def get_stats():
+    uptime = int((datetime.now() - state.start_time).total_seconds())
+    intrusions = len([e for e in state.events if e.get('event_type') == 'INTRUSION_START'])
+    cameras = len([k for k, v in state.last_frame.items() if v is not None])
+    return jsonify({
+        'cameras_online': cameras,
+        'total_intrusions': intrusions,
+        'total_people': 0,
+        'uptime': uptime
+    })
 
 @socketio.on('connect')
 def handle_connect():
-    print(f"✅ Cliente conectado — enviando {len(state.events)} eventos")
+    print(f"✅ Cliente conectado — replay de {len(state.events)} eventos")
     emit('connection_response', {'status': 'online'})
-    # Replay de todos os eventos para o cliente que conectou
     for event in state.events:
-        evt = {
+        emit('new_event', {
             'timestamp': event.get('timestamp', ''),
             'event_type': event.get('event_type', ''),
-            'camera_id': event.get('camera_id', 'unknown'),
-            'zone': event.get('zone', 'N/A'),
-            'track_id': event.get('track_id'),
+            'camera_id': event.get('camera_id', ''),
+            'zone': event.get('zone', ''),
+            'track_id': event.get('track_id', ''),
             'confidence': event.get('confidence', 0)
-        }
-        emit('new_event', evt)
+        })
 
 @socketio.on('request_stats')
 def handle_stats_request():
-    uptime = (datetime.now() - state.stats['start_time']).total_seconds()
+    uptime = int((datetime.now() - state.start_time).total_seconds())
     intrusions = len([e for e in state.events if e.get('event_type') == 'INTRUSION_START'])
+    cameras = len([k for k, v in state.last_frame.items() if v is not None])
     emit('stats_update', {
-        'cameras_online': state.stats['cameras_online'],
+        'cameras_online': cameras,
         'total_intrusions': intrusions,
-        'total_people': state.stats['total_people'],
-        'uptime': int(uptime)
+        'total_people': 0,
+        'uptime': uptime
     })
 
 def video_player(video_sources):
@@ -113,35 +115,34 @@ def video_player(video_sources):
         cap = cv2.VideoCapture(source)
         if cap.isOpened():
             caps.append((f'cam_{idx}', cap))
-            print(f"✅ Camera {idx}: {source}")
+            print(f"✅ cam_{idx}: {os.path.basename(source)}")
         else:
             print(f"❌ Falhou: {source}")
-    state.stats['cameras_online'] = len(caps)
     state.running = True
     while state.running:
         for cam_id, cap in caps:
             ret, frame = cap.read()
             if ret:
-                state.last_frame[cam_id] = frame
+                with state.frame_lock:
+                    state.last_frame[cam_id] = frame
             else:
                 cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
-        time.sleep(0.01)
+        time.sleep(0.033)
     for _, cap in caps:
         cap.release()
 
 if __name__ == '__main__':
     import sys
     if '--simulate' in sys.argv:
-        video_sources = [
+        sources = [
             os.path.join(VIDEOS_DIR, 'test_cam_frente_esq.mp4'),
             os.path.join(VIDEOS_DIR, 'test_cam_frente_dir.mp4'),
             os.path.join(VIDEOS_DIR, 'test_cam_tras_esq.mp4'),
             os.path.join(VIDEOS_DIR, 'test_cam_tras_dir.mp4'),
         ]
     else:
-        video_sources = [0]
-
+        sources = [0]
     load_events()
-    threading.Thread(target=video_player, args=(video_sources,), daemon=True).start()
-    print("🚀 Dashboard em http://localhost:5000")
-    socketio.run(app, host='0.0.0.0', port=5000, debug=False)
+    threading.Thread(target=video_player, args=(sources,), daemon=True).start()
+    print("🚀 http://localhost:5000")
+    socketio.run(app, host='0.0.0.0', port=5000, debug=False, use_reloader=False)
