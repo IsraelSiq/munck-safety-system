@@ -316,31 +316,46 @@
         img.onerror = () => { badge.textContent = '● Offline'; badge.className = 'cam-badge offline'; };
     });
 
-    // Socket
-    const socket = io();
-
-    socket.on('connect', () => {
-        const b = document.getElementById('status-badge');
-        b.textContent = '● ONLINE';
-        b.className = '';
-        b.style.cssText = 'padding:6px 14px;border-radius:20px;background:rgba(68,255,68,0.1);border:1px solid #44ff44;color:#44ff44;font-weight:700;font-size:13px;';
-        addLog('SYSTEM', 'Conectado ao servidor MUNCK', '', 'ready');
+    // Socket — conectar explicitamente ao servidor
+    const socket = io('http://localhost:5000', {
+        transports: ['websocket', 'polling'],
+        reconnection: true,
+        reconnectionDelay: 1000
     });
 
-    socket.on('disconnect', () => {
+    socket.on('connect', () => {
+        console.log('✅ Socket conectado! ID:', socket.id);
+        const b = document.getElementById('status-badge');
+        b.textContent = '● ONLINE';
+        b.style.cssText = 'padding:6px 14px;border-radius:20px;background:rgba(68,255,68,0.1);border:1px solid #44ff44;color:#44ff44;font-weight:700;font-size:13px;';
+        addLog('✅ SYSTEM', 'Conectado ao servidor MUNCK', '', 'ready');
+        socket.emit('request_stats');
+    });
+
+    socket.on('connect_error', (e) => {
+        console.error('❌ Erro de conexão:', e.message);
+        addLog('❌ ERRO', 'Falha ao conectar: ' + e.message, '', 'lost');
+    });
+
+    socket.on('disconnect', (reason) => {
+        console.warn('⚠️ Desconectado:', reason);
         const b = document.getElementById('status-badge');
         b.textContent = '● OFFLINE';
         b.style.cssText = 'padding:6px 14px;border-radius:20px;background:rgba(255,68,68,0.1);border:1px solid #ff4444;color:#ff4444;font-weight:700;font-size:13px;';
     });
 
+    socket.on('connection_response', (data) => {
+        console.log('📡 Resposta do servidor:', data);
+    });
+
     socket.on('new_event', (e) => {
-        console.log('EVENT:', e);
+        console.log('📨 EVENT RECEBIDO:', e.event_type, e);
 
         const type = e.event_type || '';
         const cam = e.camera_id || '';
         const zone = e.zone || '';
         const track = e.track_id || '';
-        const ts = e.timestamp ? new Date(e.timestamp).toLocaleTimeString('pt-BR') : '--:--:--';
+        const ts = e.timestamp ? new Date(e.timestamp).toLocaleTimeString('pt-BR') : new Date().toLocaleTimeString('pt-BR');
 
         let cssClass = 'heartbeat';
         let msg = type;
@@ -373,6 +388,7 @@
     });
 
     socket.on('stats_update', (s) => {
+        console.log('📊 STATS:', s);
         document.getElementById('s-cameras').textContent = s.cameras_online + '/4';
         document.getElementById('s-intrusions').textContent = s.total_intrusions;
         document.getElementById('s-people').textContent = s.total_people;
@@ -413,3 +429,4 @@
 </script>
 </body>
 </html>
+
