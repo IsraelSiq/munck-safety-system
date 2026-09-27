@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>MUNCK Safety System v0.2.0 - Dashboard Executivo</title>
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         html, body { height: 100%; }
@@ -15,7 +16,6 @@
             flex-direction: column;
         }
 
-        /* HEADER */
         header { 
             background: linear-gradient(90deg, #1a1f3a 0%, #2d1b4e 100%);
             padding: 20px 40px;
@@ -30,7 +30,6 @@
         .status { display: inline-flex; gap: 8px; padding: 8px 16px; border-radius: 20px; background: rgba(68, 255, 68, 0.1); border: 1px solid #44ff44; color: #44ff44; font-weight: 600; }
         .time { font-family: 'Monaco', monospace; font-weight: 600; color: #4488ff; }
 
-        /* MAIN LAYOUT */
         main { 
             display: grid;
             grid-template-columns: 1fr 380px;
@@ -40,7 +39,6 @@
             overflow: hidden;
         }
 
-        /* CAMERAS SECTION */
         .cameras-section h2 { font-size: 20px; font-weight: 700; margin-bottom: 20px; color: white; }
         .camera-grid { 
             display: grid;
@@ -50,7 +48,7 @@
         }
 
         .camera-panel {
-            background: var(--bg-darker);
+            background: #0a0e27;
             border: 2px solid #333366;
             border-radius: 12px;
             overflow: hidden;
@@ -58,7 +56,6 @@
             box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
         }
         .camera-panel:hover { border-color: #4488ff; box-shadow: 0 4px 24px rgba(68, 136, 255, 0.2); }
-        .camera-panel.offline { opacity: 0.6; border-color: #ffaa44; }
 
         .camera-header {
             background: linear-gradient(90deg, rgba(68, 136, 255, 0.1) 0%, rgba(68, 136, 255, 0.05) 100%);
@@ -90,7 +87,6 @@
             background: rgba(0, 0, 0, 0.2);
         }
 
-        /* ALARM BANNER */
         .alarm-banner {
             padding: 16px 20px;
             border-radius: 12px;
@@ -99,8 +95,12 @@
             align-items: center;
             gap: 16px;
             font-weight: 700;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+        .alarm-banner.active {
+            opacity: 1;
             animation: pulse-alarm 0.8s infinite;
-            box-shadow: 0 0 30px rgba(255, 68, 68, 0.3);
         }
         .alarm-banner.critical {
             background: linear-gradient(135deg, rgba(255, 68, 68, 0.2) 0%, rgba(255, 68, 68, 0.1) 100%);
@@ -108,11 +108,9 @@
             color: #ff4444;
         }
         .alarm-icon { font-size: 28px; animation: spin 1s linear infinite; }
-        .alarm-text { flex: 1; font-size: 18px; }
         @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
         @keyframes pulse-alarm { 0%, 100% { box-shadow: 0 0 30px rgba(255, 68, 68, 0.3); } 50% { box-shadow: 0 0 50px rgba(255, 68, 68, 0.5); } }
 
-        /* SIDEBAR */
         .sidebar {
             display: flex;
             flex-direction: column;
@@ -123,7 +121,6 @@
 
         .sidebar h2 { font-size: 16px; font-weight: 700; margin-bottom: 12px; color: white; }
 
-        /* STATS */
         .stats-grid { display: grid; grid-template-columns: 1fr; gap: 12px; }
         .stat-card {
             background: linear-gradient(135deg, rgba(68, 136, 255, 0.1) 0%, rgba(68, 136, 255, 0.05) 100%);
@@ -139,7 +136,6 @@
         .stat-label { font-size: 12px; color: #e0e0e0; font-weight: 600; }
         .stat-value { font-size: 20px; font-weight: 700; color: white; }
 
-        /* LOGS */
         .logs-container {
             background: rgba(0, 0, 0, 0.4);
             border: 1px solid #333366;
@@ -162,10 +158,11 @@
             align-items: flex-start;
             font-size: 12px;
             transition: all 0.2s ease;
+            animation: slideIn 0.3s ease;
         }
+        @keyframes slideIn { from { transform: translateX(-20px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
         .log-entry:hover { background: rgba(68, 136, 255, 0.1); transform: translateX(4px); }
         .log-entry.critical { background: rgba(255, 68, 68, 0.1); border-left-color: #ff4444; }
-        .log-entry.warning { background: rgba(255, 170, 68, 0.1); border-left-color: #ffaa44; }
 
         .log-time { color: #4488ff; font-family: 'Monaco', monospace; font-weight: 700; flex-shrink: 0; }
         .log-icon { font-size: 14px; flex-shrink: 0; }
@@ -174,7 +171,6 @@
         .log-message { color: #e0e0e0; opacity: 0.9; line-height: 1.3; }
         .log-meta { color: #4488ff; font-size: 11px; margin-top: 4px; }
 
-        /* FOOTER */
         footer {
             background: linear-gradient(90deg, #1a1f3a 0%, #2d1b4e 100%);
             padding: 16px 40px;
@@ -185,7 +181,6 @@
             color: #e0e0e0;
         }
 
-        /* SCROLLBAR */
         .logs-container::-webkit-scrollbar { width: 6px; }
         .logs-container::-webkit-scrollbar-thumb { background: #4488ff; border-radius: 3px; }
         .logs-container::-webkit-scrollbar-thumb:hover { background: #44ff44; }
@@ -195,84 +190,72 @@
     <header>
         <h1>🚨 MUNCK Safety System v0.2.0</h1>
         <div class="header-info">
-            <span class="status">● ONLINE</span>
+            <span class="status" id="status">● CONECTANDO...</span>
             <span class="time" id="time"></span>
         </div>
     </header>
 
     <main>
-        <!-- CAMERAS -->
         <section class="cameras-section">
             <h2>📹 Câmeras de Monitoramento</h2>
             
             <div class="camera-grid">
                 <div class="camera-panel">
                     <div class="camera-header">
-                        <h3>Câmera Frente Esq</h3>
-                        <span class="camera-status">🟢 Online</span>
+                        <h3>Câmera 0</h3>
+                        <span class="camera-status" id="status-0">🔄 Conectando...</span>
                     </div>
-                    <video class="camera-video" autoplay loop muted playsinline>
-                        <source src="../../videos/test_cam_frente_esq.mp4" type="video/mp4">
-                    </video>
+                    <img class="camera-video" id="cam-0" src="/camera/cam_0/stream">
                     <div class="camera-info">
-                        <span>cam_frente_esq</span>
-                        <span>1920x1080 @ 30fps</span>
+                        <span id="info-0">cam_0</span>
+                        <span>MJPEG Stream</span>
                     </div>
                 </div>
 
                 <div class="camera-panel">
                     <div class="camera-header">
-                        <h3>Câmera Frente Dir</h3>
-                        <span class="camera-status offline">🔴 Offline</span>
+                        <h3>Câmera 1</h3>
+                        <span class="camera-status" id="status-1">🔄 Conectando...</span>
                     </div>
-                    <video class="camera-video" autoplay loop muted playsinline>
-                        <source src="../../videos/test_cam_frente_dir.mp4" type="video/mp4">
-                    </video>
+                    <img class="camera-video" id="cam-1" src="/camera/cam_1/stream">
                     <div class="camera-info">
-                        <span>cam_frente_dir</span>
-                        <span>1920x1080 @ 30fps</span>
+                        <span id="info-1">cam_1</span>
+                        <span>MJPEG Stream</span>
                     </div>
                 </div>
 
                 <div class="camera-panel">
                     <div class="camera-header">
-                        <h3>Câmera Trás Esq</h3>
-                        <span class="camera-status offline">🔴 Offline</span>
+                        <h3>Câmera 2</h3>
+                        <span class="camera-status" id="status-2">🔄 Conectando...</span>
                     </div>
-                    <video class="camera-video" autoplay loop muted playsinline>
-                        <source src="../../videos/test_cam_tras_esq.mp4" type="video/mp4">
-                    </video>
+                    <img class="camera-video" id="cam-2" src="/camera/cam_2/stream">
                     <div class="camera-info">
-                        <span>cam_tras_esq</span>
-                        <span>1920x1080 @ 30fps</span>
+                        <span id="info-2">cam_2</span>
+                        <span>MJPEG Stream</span>
                     </div>
                 </div>
 
                 <div class="camera-panel">
                     <div class="camera-header">
-                        <h3>Câmera Trás Dir</h3>
-                        <span class="camera-status offline">🔴 Offline</span>
+                        <h3>Câmera 3</h3>
+                        <span class="camera-status" id="status-3">🔄 Conectando...</span>
                     </div>
-                    <video class="camera-video" autoplay loop muted playsinline>
-                        <source src="../../videos/test_cam_tras_dir.mp4" type="video/mp4">
-                    </video>
+                    <img class="camera-video" id="cam-3" src="/camera/cam_3/stream">
                     <div class="camera-info">
-                        <span>cam_tras_dir</span>
-                        <span>1920x1080 @ 30fps</span>
+                        <span id="info-3">cam_3</span>
+                        <span>MJPEG Stream</span>
                     </div>
                 </div>
             </div>
 
             <div class="alarm-banner critical" id="alarm">
                 <span class="alarm-icon">🔴</span>
-                <span class="alarm-text">INTRUSÃO DETECTADA!</span>
-                <span style="font-size: 14px;">Pessoa #14 em zona_frente_esq</span>
+                <span class="alarm-text" id="alarm-text">Aguardando intrusão...</span>
             </div>
         </section>
 
-        <!-- SIDEBAR -->
         <aside class="sidebar">
-            <!-- STATS -->
             <section>
                 <h2>📊 Estatísticas</h2>
                 <div class="stats-grid">
@@ -280,93 +263,42 @@
                         <span class="stat-icon">📡</span>
                         <div class="stat-content">
                             <span class="stat-label">Câmeras Online</span>
-                            <span class="stat-value">2/4</span>
+                            <span class="stat-value" id="stat-cameras">0/4</span>
                         </div>
                     </div>
                     <div class="stat-card">
                         <span class="stat-icon">⚠️</span>
                         <div class="stat-content">
                             <span class="stat-label">Intrusões</span>
-                            <span class="stat-value">2</span>
+                            <span class="stat-value" id="stat-intrusions">0</span>
                         </div>
                     </div>
                     <div class="stat-card">
                         <span class="stat-icon">👥</span>
                         <div class="stat-content">
                             <span class="stat-label">Pessoas</span>
-                            <span class="stat-value">8</span>
+                            <span class="stat-value" id="stat-people">0</span>
                         </div>
                     </div>
                     <div class="stat-card">
                         <span class="stat-icon">⏱️</span>
                         <div class="stat-content">
                             <span class="stat-label">Uptime</span>
-                            <span class="stat-value">18h 45m</span>
+                            <span class="stat-value" id="stat-uptime">0m</span>
                         </div>
                     </div>
                 </div>
             </section>
 
-            <!-- LOGS -->
             <section>
                 <h2>📝 Event Log (Real-time)</h2>
                 <div class="logs-container" id="logs">
                     <div class="log-entry">
-                        <span class="log-time">15:47:30</span>
-                        <span class="log-icon">✅</span>
+                        <span class="log-time">--:--:--</span>
+                        <span class="log-icon">⏳</span>
                         <div class="log-content">
-                            <span class="log-kind">SYSTEM_READY</span>
-                            <span class="log-message">Sistema inicializado e monitorando</span>
-                        </div>
-                    </div>
-                    <div class="log-entry">
-                        <span class="log-time">15:47:45</span>
-                        <span class="log-icon">💓</span>
-                        <div class="log-content">
-                            <span class="log-kind">HEARTBEAT</span>
-                            <span class="log-message">Sistema operacional. Cameras: 2/4</span>
-                        </div>
-                    </div>
-                    <div class="log-entry critical">
-                        <span class="log-time">15:48:10</span>
-                        <span class="log-icon">🚨</span>
-                        <div class="log-content">
-                            <span class="log-kind">INTRUSION_START</span>
-                            <span class="log-message">Intrusão detectada: pessoa #14</span>
-                            <span class="log-meta">🎥 cam_frente_esq | zona_frente_esq</span>
-                        </div>
-                    </div>
-                    <div class="log-entry">
-                        <span class="log-time">15:48:18</span>
-                        <span class="log-icon">✋</span>
-                        <div class="log-content">
-                            <span class="log-kind">INTRUSION_END</span>
-                            <span class="log-message">Intrusão encerrada: pessoa #14 saiu</span>
-                        </div>
-                    </div>
-                    <div class="log-entry">
-                        <span class="log-time">15:49:00</span>
-                        <span class="log-icon">💓</span>
-                        <div class="log-content">
-                            <span class="log-kind">HEARTBEAT</span>
-                            <span class="log-message">Sistema operacional. Cameras: 2/4</span>
-                        </div>
-                    </div>
-                    <div class="log-entry critical">
-                        <span class="log-time">15:49:30</span>
-                        <span class="log-icon">🚨</span>
-                        <div class="log-content">
-                            <span class="log-kind">INTRUSION_START</span>
-                            <span class="log-message">Intrusão detectada: pessoa #25</span>
-                            <span class="log-meta">🎥 cam_tras_esq | zona_tras_esq</span>
-                        </div>
-                    </div>
-                    <div class="log-entry">
-                        <span class="log-time">15:49:35</span>
-                        <span class="log-icon">✋</span>
-                        <div class="log-content">
-                            <span class="log-kind">INTRUSION_END</span>
-                            <span class="log-message">Intrusão encerrada: pessoa #25 saiu</span>
+                            <span class="log-kind">AGUARDANDO CONEXÃO</span>
+                            <span class="log-message">Conectando ao servidor...</span>
                         </div>
                     </div>
                 </div>
@@ -375,12 +307,98 @@
     </main>
 
     <footer>
-        <div>v0.2.0 | Fase 1+2 ✅ | 56 Testes ✅ | 75 Eventos ✅</div>
+        <div id="footer-left">v0.2.0 | Conectando...</div>
         <div>GitHub: <a href="https://github.com/IsraelSiq/munck-safety-system" style="color: #4488ff; text-decoration: none;" target="_blank">munck-safety-system</a></div>
     </footer>
 
     <script>
-        // Update time
+        const socket = io();
+        let lastAlarmTime = 0;
+
+        socket.on('connect', () => {
+            console.log('✅ Conectado ao servidor MUNCK');
+            document.getElementById('status').innerHTML = '● ONLINE';
+            document.getElementById('status').style.background = 'rgba(68, 255, 68, 0.1)';
+            document.getElementById('status').style.borderColor = '#44ff44';
+            document.getElementById('status').style.color = '#44ff44';
+        });
+
+        socket.on('disconnect', () => {
+            console.log('❌ Desconectado do servidor');
+            document.getElementById('status').innerHTML = '● OFFLINE';
+            document.getElementById('status').style.background = 'rgba(255, 68, 68, 0.1)';
+            document.getElementById('status').style.borderColor = '#ff4444';
+            document.getElementById('status').style.color = '#ff4444';
+        });
+
+        socket.on('new_event', (event) => {
+            console.log('📨 Novo evento:', event);
+            
+            const time = new Date(event.timestamp).toLocaleTimeString('pt-BR');
+            const icons = {
+                'SYSTEM_READY': '✅',
+                'HEARTBEAT': '💓',
+                'INTRUSION_START': '🚨',
+                'INTRUSION_END': '✋',
+                'STREAM_LOST': '⚠️'
+            };
+            
+            const logEntry = document.createElement('div');
+            logEntry.className = 'log-entry ' + (event.event_type === 'INTRUSION_START' ? 'critical' : '');
+            
+            let message = '';
+            if (event.event_type === 'INTRUSION_START') {
+                message = 'Intrusão detectada: pessoa #' + event.track_id;
+            } else if (event.event_type === 'INTRUSION_END') {
+                message = 'Intrusão encerrada: pessoa #' + event.track_id + ' saiu';
+            } else if (event.event_type === 'HEARTBEAT') {
+                message = 'Sistema operacional';
+            } else if (event.event_type === 'SYSTEM_READY') {
+                message = 'Sistema inicializado';
+            } else {
+                message = event.event_type;
+            }
+            
+            let metaHtml = '';
+            if (event.camera_id) {
+                metaHtml = '<span class="log-meta">🎥 ' + event.camera_id + ' | ' + event.zone + '</span>';
+            }
+            
+            logEntry.innerHTML = 
+                '<span class="log-time">' + time + '</span>' +
+                '<span class="log-icon">' + (icons[event.event_type] || '📝') + '</span>' +
+                '<div class="log-content">' +
+                    '<span class="log-kind">' + event.event_type + '</span>' +
+                    '<span class="log-message">' + message + '</span>' +
+                    metaHtml +
+                '</div>';
+            
+            const logs = document.getElementById('logs');
+            logs.insertBefore(logEntry, logs.firstChild);
+            
+            while (logs.children.length > 50) {
+                logs.removeChild(logs.lastChild);
+            }
+            
+            if (event.event_type === 'INTRUSION_START') {
+                lastAlarmTime = Date.now();
+                const alarm = document.getElementById('alarm');
+                alarm.classList.add('active');
+                document.getElementById('alarm-text').textContent = 'INTRUSÃO DETECTADA! Pessoa #' + event.track_id + ' em ' + event.zone;
+                setTimeout(() => alarm.classList.remove('active'), 5000);
+            }
+        });
+
+        socket.on('stats_update', (stats) => {
+            document.getElementById('stat-cameras').textContent = stats.cameras_online + '/4';
+            document.getElementById('stat-intrusions').textContent = stats.total_intrusions;
+            document.getElementById('stat-people').textContent = stats.total_people;
+            
+            const hours = Math.floor(stats.uptime / 3600);
+            const minutes = Math.floor((stats.uptime % 3600) / 60);
+            document.getElementById('stat-uptime').textContent = hours + 'h ' + minutes + 'm';
+        });
+
         function updateTime() {
             const now = new Date();
             document.getElementById('time').textContent = now.toLocaleTimeString('pt-BR');
@@ -388,10 +406,21 @@
         updateTime();
         setInterval(updateTime, 1000);
 
-        // Alarm animation (show/hide)
-        setTimeout(() => {
-            document.getElementById('alarm').style.opacity = '0.3';
-        }, 5000);
+        setInterval(() => {
+            socket.emit('request_stats');
+        }, 2000);
+
+        ['cam-0', 'cam-1', 'cam-2', 'cam-3'].forEach((id, idx) => {
+            const img = document.getElementById(id);
+            img.addEventListener('load', () => {
+                document.getElementById('status-' + idx).textContent = '🟢 Online';
+                document.getElementById('status-' + idx).className = 'camera-status';
+            });
+            img.addEventListener('error', () => {
+                document.getElementById('status-' + idx).textContent = '🔴 Offline';
+                document.getElementById('status-' + idx).className = 'camera-status offline';
+            });
+        });
     </script>
 </body>
 </html>
