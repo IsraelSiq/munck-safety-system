@@ -7,11 +7,12 @@ import cv2
 import threading
 import time
 from datetime import datetime
-from flask import Flask, render_template_string, Response, jsonify
+from flask import Flask, send_from_directory, Response, jsonify
 from flask_socketio import SocketIO, emit
 import json
+import os
 
-app = Flask(__name__, static_folder='dashboard', static_url_path='/static')
+app = Flask(__name__)
 app.config['SECRET_KEY'] = 'munck-safety-2024'
 socketio = SocketIO(app, cors_allowed_origins="*")
 
@@ -82,7 +83,7 @@ def event_emitter():
 @app.route('/')
 def index():
     """Servir dashboard"""
-    return app.send_static_file('index.html')
+    return send_from_directory('dashboard', 'index.html')
 
 @app.route('/api/stats')
 def get_stats():
