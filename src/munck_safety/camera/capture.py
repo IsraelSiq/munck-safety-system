@@ -78,22 +78,30 @@ class CameraCapture:
                 self._wait_reconnect()
                 continue
             self._mark_online()
-            self._capture_loop(cap)
+            eof = self._capture_loop(cap)
             cap.release()
+            if eof:
+                # Arquivo de video finito chegou ao fim: nao e perda de stream.
+                log.info("video_finished", camera_id=self.cfg.camera_id)
+                self._health.online = False
+                return
             if not self._stop_event.is_set():
                 log.warning("stream_lost", camera_id=self.cfg.camera_id)
                 self._mark_offline()
                 self._wait_reconnect()
 
-    def _capture_loop(self, cap: cv2.VideoCapture) -> None:
+    def _capture_loop(self, cap: cv2.VideoCapture) -> bool:
+        """Le frames ate falhar/parar. Retorna True se foi fim de arquivo."""
         failures = 0
         while not self._stop_event.is_set():
             ok, frame = cap.read()
             if not ok or frame is None:
+                if self._at_eof(cap):
+                    return True
                 failures += 1
                 self._health.consecutive_failures = failures
                 if failures >= self.cfg.max_failures:
-                    return
+                    return False
                 time.sleep(0.05)
                 continue
             failures = 0
@@ -107,6 +115,17 @@ class CameraCapture:
                 except queue.Empty:
                     pass
             self._queue.put_nowait(f)
+        return False
+
+    @staticmethod
+    def _at_eof(cap: cv2.VideoCapture) -> bool:
+        """True quando a fonte e um arquivo finito que chegou ao ultimo frame."""
+        try:
+            total = cap.get(cv2.CAP_PROP_FRAME_COUNT)
+            pos = cap.get(cv2.CAP_PROP_POS_FRAMES)
+        except Exception:
+            return False
+        return bool(total and total > 0 and pos >= total)
 
     def _open(self, source: int | str) -> Optional[cv2.VideoCapture]:
         cap = cv2.VideoCapture(source)

@@ -38,6 +38,11 @@ class _TrackState:
     outside_count: int = 0
     active: bool = False
     last_event_ts: float = 0.0
+    last_seen_ts: float = field(default_factory=time.monotonic)
+
+
+# Tempo sem ver um track (sem intrusao ativa) antes de descartar seu estado.
+STATE_TTL_S = 60.0
 
 
 class RulesEngine:
@@ -55,7 +60,10 @@ class RulesEngine:
         self._polygons: dict[str, Polygon] = {
             z.zone_id: Polygon(z.points) for z in self._zones
         }
-        self._states: dict[tuple[int, str], _TrackState] = {}
+        # zone_id -> {track_id -> estado}
+        self._states: dict[str, dict[int, _TrackState]] = {
+            z.zone_id: {} for z in self._zones
+        }
         self._operation_active: bool = False
 
     @property
@@ -80,18 +88,23 @@ class RulesEngine:
         detections: list[Detection],
         camera_id: str,
         frame: Optional[object] = None,
-    ) -> None:
+    ) -> dict[str, set[int]]:
         """
         Processa detecções de um frame de uma câmera.
 
         Deve ser chamado a cada frame mesmo se detections estiver vazio.
+        Retorna {zone_id: track_ids dentro da zona} para reuso por outros
+        monitores (EPI), evitando recalcular a geometria.
         """
         if not self._operation_active:
-            return
+            return {}
 
         relevant_zones = [z for z in self._zones if z.camera_id == camera_id]
         if not relevant_zones:
-            return
+            return {}
+
+        now = time.monotonic()
+        occupancy: dict[str, set[int]] = {}
 
         for zone in relevant_zones:
             poly = self._polygons[zone.zone_id]
@@ -101,17 +114,25 @@ class RulesEngine:
                 if d.camera_id == camera_id and self._foot_in_zone(d, poly)
             }
 
-            known_keys = [k for k in self._states if k[1] == zone.zone_id]
-            for key in known_keys:
-                if key[0] not in tracks_in_zone:
-                    self._handle_exit(self._states[key], zone, camera_id, frame)
+            occupancy[zone.zone_id] = tracks_in_zone
+            zone_states = self._states.setdefault(zone.zone_id, {})
+
+            for tid, state in list(zone_states.items()):
+                if tid in tracks_in_zone:
+                    continue
+                self._handle_exit(state, zone, camera_id, frame)
+                if not state.active and now - state.last_seen_ts > STATE_TTL_S:
+                    del zone_states[tid]
 
             for tid in tracks_in_zone:
-                key = (tid, zone.zone_id)
-                state = self._states.setdefault(
-                    key, _TrackState(track_id=tid, zone_id=zone.zone_id)
-                )
+                state = zone_states.get(tid)
+                if state is None:
+                    state = _TrackState(track_id=tid, zone_id=zone.zone_id)
+                    zone_states[tid] = state
+                state.last_seen_ts = now
                 self._handle_entry(state, zone, camera_id, frame)
+
+        return occupancy
 
     def _handle_entry(
         self,
@@ -171,10 +192,26 @@ class RulesEngine:
             ))
 
     def _clear_all_active(self) -> None:
-        for state in self._states.values():
-            state.active = False
-            state.confirm_count = 0
-            state.outside_count = 0
+        """Encerra intrusoes abertas ao fim da operacao, emitindo INTRUSION_END."""
+        zones_by_id = {z.zone_id: z for z in self._zones}
+        for zone_id, zone_states in self._states.items():
+            zone = zones_by_id.get(zone_id)
+            for state in zone_states.values():
+                if state.active and zone is not None:
+                    self._emit(SafetyEvent(
+                        kind=EventKind.INTRUSION_END,
+                        severity=Severity.INFO,
+                        camera_id=zone.camera_id,
+                        track_id=state.track_id,
+                        zone_id=zone_id,
+                        message=(
+                            f"Intrusao encerrada: operacao finalizada com pessoa "
+                            f"#{state.track_id} na zona '{zone.label}'."
+                        ),
+                    ))
+                state.active = False
+                state.confirm_count = 0
+                state.outside_count = 0
 
     @staticmethod
     def _foot_in_zone(det: Detection, poly: Polygon) -> bool:

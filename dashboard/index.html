@@ -400,17 +400,23 @@
 
     setInterval(() => socket.emit('request_stats'), 2000);
 
+    function esc(v) {
+        return String(v == null ? '' : v)
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    }
+
     function addLog(type, msg, cam, cssClass, ts) {
         ts = ts || new Date().toLocaleTimeString('pt-BR');
         const div = document.createElement('div');
         div.className = 'log ' + cssClass;
         div.innerHTML =
             '<div class="log-header">' +
-                '<span class="log-type ' + cssClass + '">' + type + '</span>' +
-                '<span class="log-time">' + ts + '</span>' +
+                '<span class="log-type ' + esc(cssClass) + '">' + esc(type) + '</span>' +
+                '<span class="log-time">' + esc(ts) + '</span>' +
             '</div>' +
-            '<div class="log-msg">' + msg + '</div>' +
-            (cam ? '<div class="log-cam">' + cam + '</div>' : '');
+            '<div class="log-msg">' + esc(msg) + '</div>' +
+            (cam ? '<div class="log-cam">' + esc(cam) + '</div>' : '');
         const list = document.getElementById('logs');
         list.insertBefore(div, list.firstChild);
         while (list.children.length > 60) list.removeChild(list.lastChild);

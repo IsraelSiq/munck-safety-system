@@ -19,9 +19,8 @@ from __future__ import annotations
 import json
 import mimetypes
 import threading
-import time
 import urllib.parse
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Optional
 
@@ -111,6 +110,7 @@ _HTML = r"""<!DOCTYPE html>
 <script>
 let currentPage=1,totalPages=1;
 function q(id){return document.getElementById(id).value}
+function esc(v){return v==null?'—':String(v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 
 function load(page){
   currentPage=page;
@@ -127,14 +127,14 @@ function load(page){
     const tbody=document.getElementById('tbody');
     tbody.innerHTML=data.items.map(e=>`
       <tr>
-        <td>${e.ts.replace('T',' ').slice(0,19)}</td>
-        <td>${e.kind}</td>
-        <td><span class="badge ${e.severity}">${e.severity}</span></td>
-        <td>${e.camera_id||'—'}</td>
-        <td>${e.track_id!=null?e.track_id:'—'}</td>
-        <td>${e.zone_id||'—'}</td>
-        <td>${e.message}</td>
-        <td>${e.snapshot?`<a href="/snapshots/${e.snapshot}" target="_blank">📷</a>`:'—'}</td>
+        <td>${esc(String(e.ts).replace('T',' ').slice(0,19))}</td>
+        <td>${esc(e.kind)}</td>
+        <td><span class="badge ${esc(e.severity)}">${esc(e.severity)}</span></td>
+        <td>${esc(e.camera_id)}</td>
+        <td>${e.track_id!=null?esc(e.track_id):'—'}</td>
+        <td>${esc(e.zone_id)}</td>
+        <td>${esc(e.message)}</td>
+        <td>${e.snapshot?`<a href="/snapshots/${encodeURIComponent(e.snapshot)}" target="_blank">📷</a>`:'—'}</td>
       </tr>`).join('');
   });
   // Atualiza link de exportação com filtros
@@ -169,6 +169,9 @@ setInterval(()=>{load(currentPage);loadSummary();},15000);
 # Handler HTTP
 # ---------------------------------------------------------------------------
 
+MAX_PAGE_SIZE = 500
+
+
 class _Handler(BaseHTTPRequestHandler):
     store: EventStore
     cfg: DashboardConfig
@@ -193,8 +196,11 @@ class _Handler(BaseHTTPRequestHandler):
                     severity=params.get("severity"),
                     camera_id=params.get("camera_id"),
                     zone_id=params.get("zone_id"),
-                    page=int(params.get("page", 1)),
-                    page_size=int(params.get("page_size", self.cfg.page_size)),
+                    page=max(1, self._int_param(params, "page", 1)),
+                    page_size=min(
+                        MAX_PAGE_SIZE,
+                        max(1, self._int_param(params, "page_size", self.cfg.page_size)),
+                    ),
                 )
                 self._send_json(result)
             elif path == "/api/export.csv":
@@ -202,13 +208,30 @@ class _Handler(BaseHTTPRequestHandler):
                 self._send(200, csv_data.encode(), "text/csv; charset=utf-8",
                            headers={"Content-Disposition": "attachment; filename=events.csv"})
             elif path.startswith("/snapshots/"):
-                fname = path[len("/snapshots/"):]
-                self._serve_file(self.artifacts_dir / fname)
+                fname = urllib.parse.unquote(path[len("/snapshots/"):])
+                self._serve_snapshot(fname)
             else:
                 self._send(404, b"Not found", "text/plain")
         except Exception as exc:
             log.exception("dashboard_handler_error", path=path, error=str(exc))
             self._send(500, b"Internal server error", "text/plain")
+
+    @staticmethod
+    def _int_param(params: dict, name: str, default: int) -> int:
+        try:
+            return int(params.get(name, default))
+        except (TypeError, ValueError):
+            return default
+
+    def _serve_snapshot(self, fname: str) -> None:
+        """Serve um snapshot garantindo que o caminho fique dentro de artifacts_dir."""
+        root = self.artifacts_dir.resolve()
+        target = (root / fname).resolve()
+        if root != target and root not in target.parents:
+            log.warning("snapshot_path_rejected", requested=fname)
+            self._send(404, b"Not found", "text/plain")
+            return
+        self._serve_file(target)
 
     def _send_html(self, html: str) -> None:
         self._send(200, html.encode(), "text/html; charset=utf-8")
@@ -257,7 +280,7 @@ class DashboardServer:
         self._store = store
         self._cfg = cfg
         self._artifacts = Path(artifacts_dir)
-        self._server: Optional[HTTPServer] = None
+        self._server: Optional[ThreadingHTTPServer] = None
         self._thread: Optional[threading.Thread] = None
 
     def start(self) -> None:
@@ -266,7 +289,8 @@ class DashboardServer:
         handler.cfg = self._cfg
         handler.artifacts_dir = self._artifacts
 
-        self._server = HTTPServer((self._cfg.host, self._cfg.port), handler)
+        self._server = ThreadingHTTPServer((self._cfg.host, self._cfg.port), handler)
+        self._server.daemon_threads = True
         self._thread = threading.Thread(
             target=self._server.serve_forever,
             name="dashboard-http",
@@ -279,4 +303,9 @@ class DashboardServer:
     def stop(self) -> None:
         if self._server:
             self._server.shutdown()
-            log.info("dashboard_stopped")
+            self._server.server_close()
+            self._server = None
+        if self._thread:
+            self._thread.join(timeout=5.0)
+            self._thread = None
+        log.info("dashboard_stopped")

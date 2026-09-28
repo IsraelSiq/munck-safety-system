@@ -71,10 +71,13 @@ class AlarmManager:
             import cv2  # type: ignore[import-untyped]
             ts = datetime.now(tz=timezone.utc).strftime("%Y%m%dT%H%M%S%f")
             cam = event.camera_id or "unknown"
-            fname = self._artifacts / f"snapshot_{ts}_{cam}_{event.kind.value}.jpg"
-            cv2.imwrite(str(fname), event.frame)
-            log.info("snapshot_saved", path=str(fname))
-            return str(fname)
+            name = f"snapshot_{ts}_{cam}_{event.kind.value}.jpg"
+            path = self._artifacts / name
+            cv2.imwrite(str(path), event.frame)
+            log.info("snapshot_saved", path=str(path))
+            # O store guarda o caminho relativo a artifacts_dir; o dashboard
+            # resolve o arquivo dentro desse diretorio.
+            return name
         except Exception as exc:
             log.warning("snapshot_error", error=str(exc))
         return None

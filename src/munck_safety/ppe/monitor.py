@@ -79,12 +79,15 @@ class PPEMonitor:
         camera_id: str,
         frame: Optional[object] = None,
         now: Optional[float] = None,
+        track_ids: Optional[set[int]] = None,
     ) -> None:
         """
         Avalia conformidade de EPI para as pessoas numa zona.
 
         ppe_detections: saída do PPEDetector para o frame atual.
         zone_id: zona onde as pessoas estão.
+        track_ids: se informado, apenas estes tracks (os que estão dentro da
+            zona) são avaliados; os demais são tratados como fora da zona.
         """
         if zone_id not in self._zone_cfg:
             return  # zona sem requisito de EPI
@@ -96,7 +99,14 @@ class PPEMonitor:
         cfg = self._zone_cfg[zone_id]
         ts = now if now is not None else time.monotonic()
 
-        present_track_ids = {d.track_id for d in ppe_detections}
+        # Apenas deteccoes da camera desta zona e, se informado, dos tracks
+        # que estao de fato dentro do poligono da zona.
+        in_zone = [
+            d for d in ppe_detections
+            if d.camera_id == camera_id
+            and (track_ids is None or d.track_id in track_ids)
+        ]
+        present_track_ids = {d.track_id for d in in_zone}
 
         # Tracks que saíram da zona → limpar estado
         stale = [k for k in self._states if k[1] == zone_id and k[0] not in present_track_ids]
@@ -104,10 +114,7 @@ class PPEMonitor:
             self._resolve_if_active(self._states[key], zone_id, camera_id, frame)
             del self._states[key]
 
-        for det in ppe_detections:
-            if det.camera_id != camera_id:
-                continue
-
+        for det in in_zone:
             key = (det.track_id, zone_id)
             state = self._states.setdefault(
                 key, _PPETrackState(track_id=det.track_id, zone_id=zone_id)

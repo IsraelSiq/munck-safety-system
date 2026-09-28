@@ -18,7 +18,12 @@ log = get_logger(__name__)
 
 
 class PersonDetector:
-    """Wrapper sobre YOLO com tracking por câmera."""
+    """Wrapper sobre YOLO com tracking por câmera.
+
+    O estado do ByteTrack vive dentro da instância do modelo; câmeras
+    diferentes precisam de instâncias diferentes, caso contrário os
+    track_ids de uma câmera são reciclados/atribuídos aos alvos de outra.
+    """
 
     def __init__(
         self,
@@ -32,11 +37,26 @@ class PersonDetector:
         self._iou = iou
         self._device = device
         self._cls = person_class_id
+        self._model_path = model_path
         self._model = self._load_model(model_path)
+        self._models: dict[str, object] = {}
 
     @property
     def available(self) -> bool:
         return self._model is not None
+
+    def _model_for(self, camera_id: str) -> Optional[object]:
+        """Retorna a instância dedicada do modelo para a câmera."""
+        if self._model is None:
+            return None
+        if camera_id not in self._models:
+            if not self._models:
+                self._models[camera_id] = self._model
+            else:
+                self._models[camera_id] = (
+                    self._load_model(self._model_path) or self._model
+                )
+        return self._models[camera_id]
 
     def detect(self, frame: np.ndarray, camera_id: str) -> list[Detection]:
         """
@@ -45,20 +65,21 @@ class PersonDetector:
         Retorna lista de Detection (pode ser vazia).
         Nunca lança exceção — falhas são logadas e retornam lista vazia.
         """
-        if self._model is None:
+        model = self._model_for(camera_id)
+        if model is None:
             log.error("model_unavailable", camera_id=camera_id)
             return []
         try:
-            return self._run(frame, camera_id)
+            return self._run(model, frame, camera_id)
         except Exception as exc:
             log.exception("detection_error", camera_id=camera_id, error=str(exc))
             return []
 
-    def _run(self, frame: np.ndarray, camera_id: str) -> list[Detection]:
+    def _run(self, model, frame: np.ndarray, camera_id: str) -> list[Detection]:
         h, w = frame.shape[:2]
         ts = time.monotonic()
 
-        results = self._model.track(
+        results = model.track(
             frame,
             conf=self._conf,
             iou=self._iou,
