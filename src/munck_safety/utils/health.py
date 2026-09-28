@@ -40,6 +40,7 @@ class HealthMonitor:
         self._on_event = on_event
         self._last_heartbeat_ts: float = 0.0
         self._storage_warning_sent: bool = False
+        self._model_warning_sent: bool = False
 
     def tick(
         self,
@@ -60,11 +61,15 @@ class HealthMonitor:
                 ))
 
         if not model_available:
-            self._emit(SafetyEvent(
-                kind=EventKind.MODEL_UNAVAILABLE, severity=Severity.CRITICAL,
-                camera_id=None, track_id=None, zone_id=None,
-                message="Modelo de deteccao indisponivel.",
-            ))
+            if not self._model_warning_sent:
+                self._model_warning_sent = True
+                self._emit(SafetyEvent(
+                    kind=EventKind.MODEL_UNAVAILABLE, severity=Severity.CRITICAL,
+                    camera_id=None, track_id=None, zone_id=None,
+                    message="Modelo de deteccao indisponivel.",
+                ))
+        else:
+            self._model_warning_sent = False
 
         disk_bytes = self._free_disk_bytes()
         min_bytes = self._alarm_cfg.disk_min_free_mb * 1024 * 1024

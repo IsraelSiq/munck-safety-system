@@ -155,7 +155,9 @@ def main(argv=None) -> int:
                 detections = detector.detect(frame.image, frame.camera_id)
 
                 # --- Motor de intrusão ---
-                engine.process(detections, frame.camera_id, frame=frame.image)
+                occupancy = engine.process(
+                    detections, frame.camera_id, frame=frame.image
+                )
 
                 # --- Detecção e monitoramento de EPI ---
                 if ppe_detector is not None and detections:
@@ -164,7 +166,8 @@ def main(argv=None) -> int:
                     )
                     for zone_id in cam_to_zones.get(frame.camera_id, []):
                         ppe_monitor.process(
-                            ppe_results, zone_id, frame.camera_id, frame=frame.image
+                            ppe_results, zone_id, frame.camera_id, frame=frame.image,
+                            track_ids=occupancy.get(zone_id, set()),
                         )
 
                 # --- Preview ---

@@ -1,2 +1,14 @@
-opencv-python>=4.8,<5
+# Runtime — mantido em sincronia com [project.dependencies] do pyproject.toml
+opencv-python-headless>=4.9
 ultralytics>=8.3,<9
+numpy>=1.26
+shapely>=2.0
+pydantic>=2.6
+pydantic-settings>=2.2
+structlog>=24.1
+psutil>=5.9
+pygame>=2.5
+
+# Demo web opcional (src/munck_safety/web_server.py)
+flask>=3.0
+flask-socketio>=5.3

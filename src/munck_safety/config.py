@@ -118,6 +118,14 @@ class Config(BaseModel):
                     f"Zona '{z.zone_id}' referencia camera_id '{z.camera_id}' "
                     "que nao existe na lista de cameras."
                 )
+
+        zone_ids = {z.zone_id for z in self.zones}
+        for pz in self.ppe_zones:
+            if pz.zone_id not in zone_ids:
+                raise ValueError(
+                    f"Zona de EPI '{pz.zone_id}' nao corresponde a nenhuma "
+                    "zona configurada."
+                )
         return self
 
     @classmethod

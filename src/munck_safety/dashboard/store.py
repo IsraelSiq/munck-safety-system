@@ -116,7 +116,8 @@ class EventStore:
         """
         Retorna página de eventos com filtros opcionais.
 
-        Retorno: {"items": [...], "total": int, "page": int, "pages": int}
+        Retorno: {"items": [...], "total": int, "page": int,
+                  "page_size": int, "pages": int}
         """
         where, params = self._build_where(
             kind, severity, camera_id, zone_id, since_ts, until_ts
@@ -144,7 +145,10 @@ class EventStore:
             for r in rows
         ]
         pages = max(1, (total + page_size - 1) // page_size)
-        return {"items": items, "total": total, "page": page, "pages": pages}
+        return {
+            "items": items, "total": total, "page": page,
+            "page_size": page_size, "pages": pages,
+        }
 
     def summary(self) -> dict:
         """Contagens agrupadas por kind e severity para o dashboard."""

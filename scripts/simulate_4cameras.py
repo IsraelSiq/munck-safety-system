@@ -9,7 +9,7 @@ def run_4cameras(video_files, config_path, operation_active=True):
     """Executa sistema com 4 cameras lendo arquivos MP4"""
     
     # Carregar config
-    with open(config_path, 'r') as f:
+    with open(config_path, encoding='utf-8') as f:
         config = json.load(f)
     
     # Mapear videos para cameras
@@ -26,7 +26,7 @@ def run_4cameras(video_files, config_path, operation_active=True):
     
     # Salvar config temporaria
     temp_config = "config/temp_4cameras.json"
-    with open(temp_config, 'w') as f:
+    with open(temp_config, 'w', encoding='utf-8') as f:
         json.dump(config, f, indent=2)
     
     print("\n" + "="*60)
@@ -34,7 +34,7 @@ def run_4cameras(video_files, config_path, operation_active=True):
     print("="*60 + "\n")
     
     print("Mapeamento de cameras:")
-    for i, (cam_id, video) in enumerate(zip(camera_ids, video_files)):
+    for i, (cam_id, video) in enumerate(zip(camera_ids, video_files, strict=True)):
         print(f"  {i+1}. {cam_id} -> {video}")
     
     print("\nIniciando sistema...\n")
@@ -43,7 +43,6 @@ def run_4cameras(video_files, config_path, operation_active=True):
     cmd = [
         sys.executable,
         "-m", "munck_safety.app",
-        "--source", "0",  # dummy
         "--config", temp_config,
         "--operation-active"
     ]

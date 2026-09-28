@@ -1,11 +1,12 @@
-﻿import cv2
+﻿import json
+import os
 import threading
 import time
 from datetime import datetime
-from flask import Flask, send_file, Response, jsonify
+
+import cv2
+from flask import Flask, Response, jsonify, send_file
 from flask_socketio import SocketIO, emit
-import json
-import os
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 DASHBOARD_DIR = os.path.join(BASE_DIR, 'dashboard')
@@ -13,7 +14,7 @@ ARTIFACTS_DIR = os.path.join(BASE_DIR, 'artifacts')
 VIDEOS_DIR = os.path.join(BASE_DIR, 'videos')
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'munck-safety-2024'
+app.config['SECRET_KEY'] = os.environ.get('MUNCK_SECRET_KEY') or os.urandom(32).hex()
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
 
 class SystemState:
@@ -26,22 +27,40 @@ class SystemState:
 
 state = SystemState()
 
+def normalize_event(record):
+    """Converte um registro de events.jsonl no payload consumido pelo dashboard.
+
+    O pipeline grava as chaves canonicas de SafetyEvent (ts/kind/zone_id);
+    registros antigos usavam timestamp/event_type/zone.
+    """
+    return {
+        'timestamp': record.get('ts') or record.get('timestamp') or '',
+        'event_type': record.get('kind') or record.get('event_type') or '',
+        'severity': record.get('severity', ''),
+        'camera_id': record.get('camera_id') or '',
+        'zone': record.get('zone_id') or record.get('zone') or '',
+        'track_id': record.get('track_id') if record.get('track_id') is not None else '',
+        'message': record.get('message', ''),
+        'confidence': record.get('confidence', 0),
+    }
+
+
 def load_events():
     path = os.path.join(ARTIFACTS_DIR, 'events.jsonl')
     try:
-        with open(path, 'r') as f:
+        with open(path, encoding='utf-8') as f:
             for line in f:
                 line = line.strip()
                 if line:
                     try:
-                        state.events.append(json.loads(line))
-                    except:
+                        state.events.append(normalize_event(json.loads(line)))
+                    except json.JSONDecodeError:
                         pass
-        intrusions = [e for e in state.events if e.get('event_type') == 'INTRUSION_START']
+        intrusions = [e for e in state.events if e['event_type'] == 'INTRUSION_START']
         print(f"📊 {len(state.events)} eventos | 🚨 {len(intrusions)} intrusoes")
         for i in intrusions:
-            print(f"   {i.get('camera_id')} | zone={i.get('zone')} | track={i.get('track_id')}")
-    except Exception as e:
+            print(f"   {i['camera_id']} | zone={i['zone']} | track={i['track_id']}")
+    except OSError as e:
         print(f"⚠️ {e}")
 
 def camera_stream(camera_id):
@@ -74,7 +93,7 @@ def camera_stream_route(camera_id):
 @app.route('/api/stats')
 def get_stats():
     uptime = int((datetime.now() - state.start_time).total_seconds())
-    intrusions = len([e for e in state.events if e.get('event_type') == 'INTRUSION_START'])
+    intrusions = len([e for e in state.events if e['event_type'] == 'INTRUSION_START'])
     cameras = len([k for k, v in state.last_frame.items() if v is not None])
     return jsonify({
         'cameras_online': cameras,
@@ -88,19 +107,12 @@ def handle_connect():
     print(f"✅ Cliente conectado — replay de {len(state.events)} eventos")
     emit('connection_response', {'status': 'online'})
     for event in state.events:
-        emit('new_event', {
-            'timestamp': event.get('timestamp', ''),
-            'event_type': event.get('event_type', ''),
-            'camera_id': event.get('camera_id', ''),
-            'zone': event.get('zone', ''),
-            'track_id': event.get('track_id', ''),
-            'confidence': event.get('confidence', 0)
-        })
+        emit('new_event', event)
 
 @socketio.on('request_stats')
 def handle_stats_request():
     uptime = int((datetime.now() - state.start_time).total_seconds())
-    intrusions = len([e for e in state.events if e.get('event_type') == 'INTRUSION_START'])
+    intrusions = len([e for e in state.events if e['event_type'] == 'INTRUSION_START'])
     cameras = len([k for k, v in state.last_frame.items() if v is not None])
     emit('stats_update', {
         'cameras_online': cameras,
