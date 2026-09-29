@@ -365,7 +365,9 @@
             cssClass = 'intrusion';
             icon = '🚨';
             msg = 'Intrusao detectada — Pessoa #' + track;
-            triggerAlarm('Pessoa #' + track + ' | ' + cam + ' | ' + zone);
+            if (!e.is_replay) {
+                triggerAlarm('Pessoa #' + track + ' | ' + cam + ' | ' + zone);
+            }
             document.getElementById('s-intrusions').className = 'stat-val danger';
         } else if (type === 'INTRUSION_END') {
             cssClass = 'lost';

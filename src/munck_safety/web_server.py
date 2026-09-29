@@ -107,7 +107,9 @@ def handle_connect():
     print(f"✅ Cliente conectado — replay de {len(state.events)} eventos")
     emit('connection_response', {'status': 'online'})
     for event in state.events:
-        emit('new_event', event)
+        e = dict(event)
+        e['is_replay'] = True
+        emit('new_event', e)
 
 @socketio.on('request_stats')
 def handle_stats_request():
@@ -158,3 +160,5 @@ if __name__ == '__main__':
     threading.Thread(target=video_player, args=(sources,), daemon=True).start()
     print("🚀 http://localhost:5000")
     socketio.run(app, host='0.0.0.0', port=5000, debug=False, use_reloader=False)
+
+
