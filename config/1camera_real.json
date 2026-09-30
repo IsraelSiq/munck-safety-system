@@ -1,0 +1,74 @@
+{
+  "cameras": [
+    {
+      "camera_id": "cam_0",
+      "source": "0",
+      "width": 640,
+      "height": 480,
+      "fps": 15
+    }
+  ],
+  "zones": [
+    {
+      "zone_id": "zona_cam_0",
+      "camera_id": "cam_0",
+      "label": "Zona Restrita",
+      "points": [
+        {
+          "x": 0.0,
+          "y": 0.0
+        },
+        {
+          "x": 1.0,
+          "y": 0.0
+        },
+        {
+          "x": 1.0,
+          "y": 1.0
+        },
+        {
+          "x": 0.0,
+          "y": 1.0
+        }
+      ]
+    }
+  ],
+  "detector": {
+    "model_path": "yolo11n.pt",
+    "confidence_threshold": 0.25,
+    "iou_threshold": 0.5,
+    "device": "cpu"
+  },
+  "rules": {
+    "confirmation_frames": 2,
+    "cooldown_s": 10.0,
+    "hysteresis_frames": 5
+  },
+  "alarm": {
+    "sound_file": null,
+    "volume": 1.0,
+    "artifacts_dir": "artifacts",
+    "save_snapshots": true,
+    "disk_min_free_mb": 500.0
+  },
+  "health": {
+    "heartbeat_interval_s": 10.0,
+    "camera_timeout_s": 5.0
+  },
+  "log_level": "INFO",
+  "ppe_zones": [],
+  "ppe_detector": {
+    "model_path": "yolo11n-ppe.pt",
+    "confidence_threshold": 0.4,
+    "device": "cpu",
+    "enabled": false
+  },
+  "dashboard": {
+    "enabled": true,
+    "host": "0.0.0.0",
+    "port": 8080,
+    "retention_days": 30,
+    "db_path": "artifacts/events.db",
+    "page_size": 50
+  }
+}
