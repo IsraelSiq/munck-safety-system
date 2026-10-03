@@ -55,9 +55,15 @@ python -m munck_safety.app \
 
 Também é possível usar a webcam configurada como fonte padrão, omitindo
 `--source`: o valor `"0"` da configuração é convertido no índice inteiro da
-webcam pelo capturador. Para interromper o processo após a demonstração,
-pressione `Ctrl+C`. Um arquivo de vídeo finito pode chegar ao fim sem encerrar
-o loop principal automaticamente.
+webcam pelo capturador. Para o vídeo positivo, confirme no dashboard ou no log
+que `INTRUSION_END` foi emitido **antes** de interromper o processo; isso
+confirma que a pessoa saiu e que a histerese foi observada. Se o arquivo
+terminar antes disso, a rodada não demonstrou o encerramento da intrusão.
+
+Ao chegar ao fim de um arquivo, a thread de captura registra `video_finished`
+e termina, mas o loop principal do app permanece ativo. Após confirmar os
+eventos esperados (ou registrar a rodada como incompleta), pressione `Ctrl+C`
+para encerrar o processo.
 
 ### Negativo: pessoa fora da zona, operação ativa
 
@@ -85,10 +91,19 @@ python -m munck_safety.app \
 Resultado esperado: nenhum `INTRUSION_START`. Podem existir eventos
 informativos/de saúde, que não são alarmes de intrusão.
 
-Os cenários usam os mesmos arquivos JSONL e SQLite sob `artifacts/poc/`.
-Anote o horário de início/fim de cada execução para separar seus resultados,
-ou arquive as evidências antes de iniciar a próxima rodada. Não apague os
-arquivos de evidência até confirmar que há cópia.
+Todos os cenários usam `artifacts/poc/` nesta configuração. Para manter as
+evidências separadas, encerre o app após cada rodada e arquive essa pasta antes
+da próxima. Por exemplo, após o cenário positivo:
+
+```bash
+python -c "from pathlib import Path; Path('artifacts/poc').rename('artifacts/poc-entrada-saida')"
+```
+
+Após os cenários negativos, use nomes distintos, como
+`artifacts/poc-fora-zona` e `artifacts/poc-sem-operacao`. A próxima execução
+recria `artifacts/poc/`; se o destino de arquivo já existir, escolha outro nome.
+Cada pasta preserva conjuntamente snapshots, JSONL e SQLite. Não apague as
+evidências até confirmar que há cópia.
 
 ## Conferir e registrar evidências
 
