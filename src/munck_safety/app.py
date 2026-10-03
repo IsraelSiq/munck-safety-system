@@ -32,10 +32,10 @@ log = get_logger(__name__)
 _EVENT_DB_FILENAME = "events.db"
 
 
-def _parse_evidence_dir(value: str) -> str:
+def _normalize_evidence_dir(value: str) -> str:
     directory = value.strip()
     if not directory:
-        raise argparse.ArgumentTypeError("--evidence-dir nao pode ser vazio.")
+        raise ValueError("--evidence-dir nao pode ser vazio.")
     return directory
 
 
@@ -45,7 +45,7 @@ def _parse_args(argv=None) -> argparse.Namespace:
     p.add_argument("--source", default=None,
                    help="Sobrescreve source da camera 0")
     p.add_argument("--evidence-dir", default=None,
-                   type=_parse_evidence_dir,
+                   type=_normalize_evidence_dir,
                    help="Sobrescreve o diretorio de snapshots, eventos e banco SQLite")
     p.add_argument("--operation-active", action="store_true")
     p.add_argument("--show-preview", action="store_true")
@@ -55,9 +55,7 @@ def _parse_args(argv=None) -> argparse.Namespace:
 def _configure_evidence_dir(cfg: Config, evidence_dir: str | None) -> None:
     if evidence_dir is None:
         return
-    evidence_dir = evidence_dir.strip()
-    if not evidence_dir:
-        raise ValueError("--evidence-dir nao pode ser vazio.")
+    evidence_dir = _normalize_evidence_dir(evidence_dir)
     directory = Path(evidence_dir)
     cfg.alarm.artifacts_dir = str(directory)
     cfg.dashboard.db_path = str(directory / _EVENT_DB_FILENAME)
