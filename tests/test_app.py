@@ -17,11 +17,12 @@ def poc_config() -> Config:
 
 
 def test_evidence_dir_sets_artifacts_and_database(poc_config: Config) -> None:
-    _configure_evidence_dir(poc_config, " artifacts/run-001 ")
+    _configure_evidence_dir(poc_config, " ./artifacts/run-001/ ")
+    normalized_dir = str(Path("artifacts") / "run-001")
 
-    assert poc_config.alarm.artifacts_dir == "artifacts/run-001"
+    assert poc_config.alarm.artifacts_dir == normalized_dir
     assert poc_config.dashboard.db_path == str(
-        Path("artifacts/run-001") / _EVENT_DB_FILENAME
+        Path(normalized_dir) / _EVENT_DB_FILENAME
     )
 
 
@@ -55,7 +56,8 @@ def test_cli_rejects_empty_evidence_dir(capsys: pytest.CaptureFixture[str]) -> N
 def test_main_wires_evidence_dir_to_components(
     poc_config: Config, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    evidence_dir = "artifacts/integration-run"
+    evidence_dir = "artifacts/integration-run/"
+    normalized_dir = str(Path("artifacts") / "integration-run")
     observed: dict[str, str] = {}
     store = Mock()
     dashboard = Mock()
@@ -95,7 +97,7 @@ def test_main_wires_evidence_dir_to_components(
 
     assert app.main(["--config", "unused.json", "--evidence-dir", evidence_dir]) == 0
     assert observed == {
-        "store_path": str(Path(evidence_dir) / _EVENT_DB_FILENAME),
-        "dashboard_artifacts": evidence_dir,
-        "alarm_artifacts": evidence_dir,
+        "store_path": str(Path(normalized_dir) / _EVENT_DB_FILENAME),
+        "dashboard_artifacts": normalized_dir,
+        "alarm_artifacts": normalized_dir,
     }
