@@ -61,6 +61,7 @@ def _parse_args(argv=None) -> argparse.Namespace:
 
 
 def _configure_evidence_dir(cfg: Config, evidence_dir: str | None) -> None:
+    """Override artifact storage in place; place the SQLite DB under the same directory."""
     if evidence_dir is None:
         return
     evidence_dir = _normalize_evidence_dir(evidence_dir)
