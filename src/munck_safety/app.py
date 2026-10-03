@@ -14,6 +14,7 @@ import argparse
 import signal
 import sys
 import time
+from pathlib import Path
 
 from munck_safety.alarm import AlarmManager
 from munck_safety.camera import CameraCapture
@@ -34,14 +35,27 @@ def _parse_args(argv=None) -> argparse.Namespace:
     p.add_argument("--config", default="config/example.json")
     p.add_argument("--source", default=None,
                    help="Sobrescreve source da camera 0")
+    p.add_argument("--evidence-dir", default=None,
+                   help="Sobrescreve o diretorio de snapshots, eventos e banco SQLite")
     p.add_argument("--operation-active", action="store_true")
     p.add_argument("--show-preview", action="store_true")
     return p.parse_args(argv)
 
 
+def _configure_evidence_dir(cfg: Config, evidence_dir: str | None) -> None:
+    if evidence_dir is None:
+        return
+    if not evidence_dir.strip():
+        raise ValueError("--evidence-dir nao pode ser vazio.")
+    directory = Path(evidence_dir)
+    cfg.alarm.artifacts_dir = str(directory)
+    cfg.dashboard.db_path = str(directory / "events.db")
+
+
 def main(argv=None) -> int:
     args = _parse_args(argv)
     cfg = Config.from_file(args.config)
+    _configure_evidence_dir(cfg, args.evidence_dir)
     configure_logging(cfg.log_level)
 
     if args.source is not None and cfg.cameras:

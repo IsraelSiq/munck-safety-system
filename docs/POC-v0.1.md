@@ -37,8 +37,6 @@ validá-la exige um modelo adequado e um protocolo separado.
 3. Calibre o polígono em `config/poc-single-camera.json` para o enquadramento
    utilizado. Os pontos são coordenadas normalizadas de 0 a 1; os valores
    incluídos são apenas um exemplo e não representam uma zona real de operação.
-   Copie os mesmos pontos calibrados para `config/poc-outside-zone.json` e
-   `config/poc-inactive.json` para manter os cenários comparáveis.
 
 4. O dashboard nesta configuração escuta somente em `127.0.0.1`. Mantenha-o
    nessa interface durante a demonstração: o servidor não tem autenticação.
@@ -57,10 +55,11 @@ Com um vídeo controlado chamado `videos/poc_entrada_saida.mp4`:
 python -m munck_safety.app \
   --config config/poc-single-camera.json \
   --source videos/poc_entrada_saida.mp4 \
-  --operation-active
+  --operation-active \
+  --evidence-dir artifacts/poc-entrada-saida
 ```
 
-Esta configuração grava evidências em `artifacts/poc-entrada-saida/`.
+`--evidence-dir` define onde serão gravados o JSONL, os snapshots e o SQLite.
 Confirme no dashboard ou no log que `INTRUSION_END` foi emitido **antes** de
 interromper o processo; se o vídeo terminar antes disso, a rodada não
 demonstrou o encerramento da intrusão.
@@ -76,13 +75,13 @@ Use um vídeo real em que a pessoa permaneça fora do polígono:
 
 ```bash
 python -m munck_safety.app \
-  --config config/poc-outside-zone.json \
+  --config config/poc-single-camera.json \
   --source videos/poc_fora_zona.mp4 \
-  --operation-active
+  --operation-active \
+  --evidence-dir artifacts/poc-fora-zona
 ```
 
 Resultado esperado: nenhum `INTRUSION_START` para essa passagem.
-As evidências ficam em `artifacts/poc-fora-zona/`.
 
 ### Negativo: pessoa na zona, operação inativa
 
@@ -90,29 +89,26 @@ Execute sem `--operation-active` com uma pessoa visível na zona:
 
 ```bash
 python -m munck_safety.app \
-  --config config/poc-inactive.json \
-  --source videos/poc_dentro_sem_operacao.mp4
+  --config config/poc-single-camera.json \
+  --source videos/poc_dentro_sem_operacao.mp4 \
+  --evidence-dir artifacts/poc-sem-operacao
 ```
 
 Resultado esperado: nenhum `INTRUSION_START`. Podem existir eventos
-informativos/de saúde, que não são alarmes de intrusão. As evidências ficam em
-`artifacts/poc-sem-operacao/`.
+informativos/de saúde, que não são alarmes de intrusão.
 
-Cada configuração separa desde o início snapshots, JSONL e SQLite em sua
-própria pasta. Execute uma demonstração por vez, pois todas usam a porta 8080
-para o dashboard. Não apague as evidências até confirmar que há cópia.
+Todos os cenários usam a mesma configuração calibrada e fornecem um diretório
+de evidências diferente na linha de comando; o banco SQLite será criado como
+`events.db` dentro dele. Execute uma demonstração por vez, pois todas usam a
+porta 8080 para o dashboard. Não apague as evidências até confirmar que há cópia.
 
 ## Conferir e registrar evidências
 
 - Abra `http://127.0.0.1:8080` na máquina que executa a POC e confirme os
   eventos no dashboard.
-- Confira os arquivos do cenário executado:
-  - Positivo: `artifacts/poc-entrada-saida/events.jsonl`,
-    `artifacts/poc-entrada-saida/events.db` e os snapshots na mesma pasta.
-  - Pessoa fora da zona: `artifacts/poc-fora-zona/events.jsonl`,
-    `artifacts/poc-fora-zona/events.db` e os snapshots na mesma pasta.
-  - Operação inativa: `artifacts/poc-sem-operacao/events.jsonl`,
-    `artifacts/poc-sem-operacao/events.db` e os snapshots na mesma pasta.
+- Confira `events.jsonl`, `events.db` e os snapshots na pasta passada a
+  `--evidence-dir` para cada cenário (`artifacts/poc-entrada-saida/`,
+  `artifacts/poc-fora-zona/` ou `artifacts/poc-sem-operacao/`).
 - No cenário positivo, procure `INTRUSION_START` e `INTRUSION_END`, além do
   snapshot JPG associado ao início da intrusão.
 - Registre para cada cenário: vídeo/fonte, configuração e zona usadas,

@@ -33,7 +33,7 @@
     "hysteresis_frames": 5
   },
   "alarm": {
-    "artifacts_dir": "artifacts/poc-entrada-saida",
+    "artifacts_dir": "artifacts/poc",
     "save_snapshots": true
   },
   "ppe_detector": {
@@ -44,7 +44,7 @@
     "host": "127.0.0.1",
     "port": 8080,
     "retention_days": 30,
-    "db_path": "artifacts/poc-entrada-saida/events.db",
+    "db_path": "artifacts/poc/events.db",
     "page_size": 50
   }
 }
