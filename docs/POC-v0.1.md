@@ -54,9 +54,10 @@ python -m munck_safety.app \
 ```
 
 Também é possível usar a webcam configurada como fonte padrão, omitindo
-`--source`. Para interromper o processo após a demonstração, pressione
-`Ctrl+C`. Um arquivo de vídeo finito pode chegar ao fim sem encerrar o loop
-principal automaticamente.
+`--source`: o valor `"0"` da configuração é convertido no índice inteiro da
+webcam pelo capturador. Para interromper o processo após a demonstração,
+pressione `Ctrl+C`. Um arquivo de vídeo finito pode chegar ao fim sem encerrar
+o loop principal automaticamente.
 
 ### Negativo: pessoa fora da zona, operação ativa
 
