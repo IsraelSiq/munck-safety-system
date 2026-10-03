@@ -45,7 +45,8 @@ def _parse_args(argv=None) -> argparse.Namespace:
 def _configure_evidence_dir(cfg: Config, evidence_dir: str | None) -> None:
     if evidence_dir is None:
         return
-    if not evidence_dir.strip():
+    evidence_dir = evidence_dir.strip()
+    if not evidence_dir:
         raise ValueError("--evidence-dir nao pode ser vazio.")
     directory = Path(evidence_dir)
     cfg.alarm.artifacts_dir = str(directory)

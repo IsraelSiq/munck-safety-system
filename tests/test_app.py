@@ -15,10 +15,10 @@ def poc_config() -> Config:
 
 
 def test_evidence_dir_sets_artifacts_and_database(poc_config: Config) -> None:
-    _configure_evidence_dir(poc_config, "artifacts/run-001")
+    _configure_evidence_dir(poc_config, " artifacts/run-001 ")
 
     assert poc_config.alarm.artifacts_dir == "artifacts/run-001"
-    assert poc_config.dashboard.db_path == "artifacts/run-001/events.db"
+    assert poc_config.dashboard.db_path == str(Path("artifacts/run-001") / "events.db")
 
 
 def test_evidence_dir_none_preserves_configured_paths(poc_config: Config) -> None:
