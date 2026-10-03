@@ -40,6 +40,9 @@ validá-la exige um modelo adequado e um protocolo separado.
    nessa interface durante a demonstração: o servidor não tem autenticação.
    Não altere o host para `0.0.0.0` nem exponha a porta 8080 à rede pública.
 
+Para usar a webcam definida como fonte padrão, omita `--source`: o valor `"0"`
+da configuração é convertido no índice inteiro da webcam pelo capturador.
+
 ## Executar os cenários
 
 ### Positivo: fora → dentro → fora, operação ativa
@@ -53,12 +56,10 @@ python -m munck_safety.app \
   --operation-active
 ```
 
-Também é possível usar a webcam configurada como fonte padrão, omitindo
-`--source`: o valor `"0"` da configuração é convertido no índice inteiro da
-webcam pelo capturador. Para o vídeo positivo, confirme no dashboard ou no log
-que `INTRUSION_END` foi emitido **antes** de interromper o processo; isso
-confirma que a pessoa saiu e que a histerese foi observada. Se o arquivo
-terminar antes disso, a rodada não demonstrou o encerramento da intrusão.
+Confirme no dashboard ou no log que `INTRUSION_END` foi emitido **antes** de
+interromper o processo; isso confirma que a pessoa saiu e que a histerese foi
+observada. Se o arquivo terminar antes disso, a rodada não demonstrou o
+encerramento da intrusão.
 
 Ao chegar ao fim de um arquivo, a thread de captura registra `video_finished`
 e termina, mas o loop principal do app permanece ativo. Após confirmar os
@@ -96,14 +97,13 @@ evidências separadas, encerre o app após cada rodada e arquive essa pasta ante
 da próxima. Por exemplo, após o cenário positivo:
 
 ```bash
-python -c "from pathlib import Path; Path('artifacts/poc').rename('artifacts/poc-entrada-saida')"
+mv artifacts/poc artifacts/poc-entrada-saida
 ```
 
-Após os cenários negativos, use nomes distintos, como
-`artifacts/poc-fora-zona` e `artifacts/poc-sem-operacao`. A próxima execução
-recria `artifacts/poc/`; se o destino de arquivo já existir, escolha outro nome.
-Cada pasta preserva conjuntamente snapshots, JSONL e SQLite. Não apague as
-evidências até confirmar que há cópia.
+Repita após cada cenário com um destino distinto, como `artifacts/poc-fora-zona`
+e `artifacts/poc-sem-operacao`. A próxima execução recria `artifacts/poc/`; se
+o destino já existir, escolha outro nome. Cada pasta preserva conjuntamente
+snapshots, JSONL e SQLite. Não apague as evidências até confirmar que há cópia.
 
 ## Conferir e registrar evidências
 
