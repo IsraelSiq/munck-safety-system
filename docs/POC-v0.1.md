@@ -23,10 +23,12 @@ validá-la exige um modelo adequado e um protocolo separado.
 
 2. Grave ou obtenha vídeos de uso autorizado com uma câmera fixa e uma pessoa
    real. Para a sequência principal, use uma pessoa visível que começa fora da
-   zona, entra nela, permanece alguns instantes e sai. Prepare também, se
-   possível, vídeos separados de uma pessoa que permanece fora da zona e de
-   uma pessoa na zona com a operação inativa. Não publique imagens sem
-   autorização dos participantes.
+   zona, entra nela, permanece alguns instantes e sai. Inclua alguns segundos
+   de imagem após a saída, com pelo menos cinco frames utilizáveis fora da zona
+   (`hysteresis_frames` da configuração), para que o sistema possa confirmar
+   `INTRUSION_END`. Prepare também, se possível, vídeos separados de uma pessoa
+   que permanece fora da zona e de uma pessoa na zona com a operação inativa.
+   Não publique imagens sem autorização dos participantes.
 
    Use vídeo real controlado como evidência principal. O script
    `scripts/generate_test_videos.py` desenha retângulos e serve apenas para
@@ -56,10 +58,10 @@ python -m munck_safety.app \
   --operation-active
 ```
 
+Esta configuração grava evidências em `artifacts/poc-entrada-saida/`.
 Confirme no dashboard ou no log que `INTRUSION_END` foi emitido **antes** de
-interromper o processo; isso confirma que a pessoa saiu e que a histerese foi
-observada. Se o arquivo terminar antes disso, a rodada não demonstrou o
-encerramento da intrusão.
+interromper o processo; se o vídeo terminar antes disso, a rodada não
+demonstrou o encerramento da intrusão.
 
 Ao chegar ao fim de um arquivo, a thread de captura registra `video_finished`
 e termina, mas o loop principal do app permanece ativo. Após confirmar os
@@ -72,12 +74,13 @@ Use um vídeo real em que a pessoa permaneça fora do polígono:
 
 ```bash
 python -m munck_safety.app \
-  --config config/poc-single-camera.json \
+  --config config/poc-outside-zone.json \
   --source videos/poc_fora_zona.mp4 \
   --operation-active
 ```
 
 Resultado esperado: nenhum `INTRUSION_START` para essa passagem.
+As evidências ficam em `artifacts/poc-fora-zona/`.
 
 ### Negativo: pessoa na zona, operação inativa
 
@@ -85,25 +88,17 @@ Execute sem `--operation-active` com uma pessoa visível na zona:
 
 ```bash
 python -m munck_safety.app \
-  --config config/poc-single-camera.json \
+  --config config/poc-inactive.json \
   --source videos/poc_dentro_sem_operacao.mp4
 ```
 
 Resultado esperado: nenhum `INTRUSION_START`. Podem existir eventos
-informativos/de saúde, que não são alarmes de intrusão.
+informativos/de saúde, que não são alarmes de intrusão. As evidências ficam em
+`artifacts/poc-sem-operacao/`.
 
-Todos os cenários usam `artifacts/poc/` nesta configuração. Para manter as
-evidências separadas, encerre o app após cada rodada e arquive essa pasta antes
-da próxima. Por exemplo, após o cenário positivo:
-
-```bash
-mv artifacts/poc artifacts/poc-entrada-saida
-```
-
-Repita após cada cenário com um destino distinto, como `artifacts/poc-fora-zona`
-e `artifacts/poc-sem-operacao`. A próxima execução recria `artifacts/poc/`; se
-o destino já existir, escolha outro nome. Cada pasta preserva conjuntamente
-snapshots, JSONL e SQLite. Não apague as evidências até confirmar que há cópia.
+Cada configuração separa desde o início snapshots, JSONL e SQLite em sua
+própria pasta. Execute uma demonstração por vez, pois todas usam a porta 8080
+para o dashboard. Não apague as evidências até confirmar que há cópia.
 
 ## Conferir e registrar evidências
 

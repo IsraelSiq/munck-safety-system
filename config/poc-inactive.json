@@ -1,0 +1,50 @@
+{
+  "cameras": [
+    {
+      "camera_id": "poc_camera",
+      "source": "0",
+      "width": 1280,
+      "height": 720,
+      "fps": 15
+    }
+  ],
+  "zones": [
+    {
+      "zone_id": "poc_zona",
+      "camera_id": "poc_camera",
+      "label": "Zona de demonstração",
+      "points": [
+        { "x": 0.25, "y": 0.25 },
+        { "x": 0.75, "y": 0.25 },
+        { "x": 0.75, "y": 0.9 },
+        { "x": 0.25, "y": 0.9 }
+      ]
+    }
+  ],
+  "detector": {
+    "model_path": "yolo11n.pt",
+    "confidence_threshold": 0.45,
+    "iou_threshold": 0.5,
+    "device": "cpu"
+  },
+  "rules": {
+    "confirmation_frames": 3,
+    "cooldown_s": 10.0,
+    "hysteresis_frames": 5
+  },
+  "alarm": {
+    "artifacts_dir": "artifacts/poc-sem-operacao",
+    "save_snapshots": true
+  },
+  "ppe_detector": {
+    "enabled": false
+  },
+  "dashboard": {
+    "enabled": true,
+    "host": "127.0.0.1",
+    "port": 8080,
+    "retention_days": 30,
+    "db_path": "artifacts/poc-sem-operacao/events.db",
+    "page_size": 50
+  }
+}
