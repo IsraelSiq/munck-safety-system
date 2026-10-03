@@ -37,6 +37,8 @@ validá-la exige um modelo adequado e um protocolo separado.
 3. Calibre o polígono em `config/poc-single-camera.json` para o enquadramento
    utilizado. Os pontos são coordenadas normalizadas de 0 a 1; os valores
    incluídos são apenas um exemplo e não representam uma zona real de operação.
+   Copie os mesmos pontos calibrados para `config/poc-outside-zone.json` e
+   `config/poc-inactive.json` para manter os cenários comparáveis.
 
 4. O dashboard nesta configuração escuta somente em `127.0.0.1`. Mantenha-o
    nessa interface durante a demonstração: o servidor não tem autenticação.
@@ -104,9 +106,15 @@ para o dashboard. Não apague as evidências até confirmar que há cópia.
 
 - Abra `http://127.0.0.1:8080` na máquina que executa a POC e confirme os
   eventos no dashboard.
-- Confira `artifacts/poc/events.jsonl` e a base `artifacts/poc/events.db`.
+- Confira os arquivos do cenário executado:
+  - Positivo: `artifacts/poc-entrada-saida/events.jsonl`,
+    `artifacts/poc-entrada-saida/events.db` e os snapshots na mesma pasta.
+  - Pessoa fora da zona: `artifacts/poc-fora-zona/events.jsonl`,
+    `artifacts/poc-fora-zona/events.db` e os snapshots na mesma pasta.
+  - Operação inativa: `artifacts/poc-sem-operacao/events.jsonl`,
+    `artifacts/poc-sem-operacao/events.db` e os snapshots na mesma pasta.
 - No cenário positivo, procure `INTRUSION_START` e `INTRUSION_END`, além do
-  snapshot JPG associado ao início da intrusão em `artifacts/poc/`.
+  snapshot JPG associado ao início da intrusão.
 - Registre para cada cenário: vídeo/fonte, configuração e zona usadas,
   horários, eventos esperados e observados, snapshots e qualquer falha ou
   detecção perdida.
