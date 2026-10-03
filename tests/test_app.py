@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from munck_safety.app import _configure_evidence_dir, _parse_args
+from munck_safety.app import _EVENT_DB_FILENAME, _configure_evidence_dir, _parse_args
 from munck_safety.config import Config
 
 
@@ -18,7 +18,9 @@ def test_evidence_dir_sets_artifacts_and_database(poc_config: Config) -> None:
     _configure_evidence_dir(poc_config, " artifacts/run-001 ")
 
     assert poc_config.alarm.artifacts_dir == "artifacts/run-001"
-    assert poc_config.dashboard.db_path == str(Path("artifacts/run-001") / "events.db")
+    assert poc_config.dashboard.db_path == str(
+        Path("artifacts/run-001") / _EVENT_DB_FILENAME
+    )
 
 
 def test_evidence_dir_none_preserves_configured_paths(poc_config: Config) -> None:
@@ -40,3 +42,8 @@ def test_cli_parses_evidence_dir() -> None:
     args = _parse_args(["--evidence-dir", "artifacts/run-001"])
 
     assert args.evidence_dir == "artifacts/run-001"
+
+
+def test_cli_rejects_empty_evidence_dir() -> None:
+    with pytest.raises(SystemExit):
+        _parse_args(["--evidence-dir", "  "])
