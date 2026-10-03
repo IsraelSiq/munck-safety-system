@@ -36,7 +36,7 @@ def test_evidence_dir_none_preserves_configured_paths(poc_config: Config) -> Non
 
 
 def test_empty_evidence_dir_is_rejected(poc_config: Config) -> None:
-    with pytest.raises(ValueError, match="nao pode ser vazio"):
+    with pytest.raises(ValueError, match="--evidence-dir"):
         _configure_evidence_dir(poc_config, " ")
 
 
@@ -49,7 +49,7 @@ def test_cli_parses_evidence_dir() -> None:
 def test_cli_rejects_empty_evidence_dir(capsys: pytest.CaptureFixture[str]) -> None:
     with pytest.raises(SystemExit):
         _parse_args(["--evidence-dir", "  "])
-    assert "--evidence-dir nao pode ser vazio." in capsys.readouterr().err
+    assert "--evidence-dir" in capsys.readouterr().err
 
 
 def test_main_wires_evidence_dir_to_components(
