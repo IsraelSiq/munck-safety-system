@@ -35,7 +35,7 @@ _EVENT_DB_FILENAME = "events.db"
 def _normalize_evidence_dir(value: str) -> str:
     directory = value.strip()
     if not directory:
-        raise ValueError("--evidence-dir nao pode ser vazio.")
+        raise argparse.ArgumentTypeError("--evidence-dir nao pode ser vazio.")
     return directory
 
 
@@ -55,7 +55,10 @@ def _parse_args(argv=None) -> argparse.Namespace:
 def _configure_evidence_dir(cfg: Config, evidence_dir: str | None) -> None:
     if evidence_dir is None:
         return
-    evidence_dir = _normalize_evidence_dir(evidence_dir)
+    try:
+        evidence_dir = _normalize_evidence_dir(evidence_dir)
+    except argparse.ArgumentTypeError as exc:
+        raise ValueError(str(exc)) from exc
     directory = Path(evidence_dir)
     cfg.alarm.artifacts_dir = str(directory)
     cfg.dashboard.db_path = str(directory / _EVENT_DB_FILENAME)
