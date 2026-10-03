@@ -30,7 +30,7 @@ from munck_safety.utils import HealthMonitor
 log = get_logger(__name__)
 
 _EVENT_DB_FILENAME = "events.db"
-_EMPTY_EVIDENCE_DIR_ERROR = "--evidence-dir nao pode ser vazio."
+_EMPTY_EVIDENCE_DIR_ERROR = "--evidence-dir não pode ser vazio."
 
 
 def _normalize_evidence_dir(value: str) -> str:

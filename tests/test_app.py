@@ -61,7 +61,9 @@ def test_main_wires_evidence_dir_to_components(
     dashboard = Mock()
     alarm = Mock()
 
-    monkeypatch.setattr(app.Config, "from_file", lambda _: poc_config)
+    monkeypatch.setattr(
+        app.Config, "from_file", classmethod(lambda cls, _: poc_config), raising=True
+    )
     monkeypatch.setattr(app, "configure_logging", lambda _: None)
 
     def make_store(path: str, retention_days: int) -> Mock:
