@@ -14,6 +14,7 @@ import argparse
 import signal
 import sys
 import time
+from pathlib import Path
 
 from munck_safety.alarm import AlarmManager
 from munck_safety.camera import CameraCapture
@@ -28,20 +29,51 @@ from munck_safety.utils import HealthMonitor
 
 log = get_logger(__name__)
 
+_EVENT_DB_FILENAME = "events.db"
+_EMPTY_EVIDENCE_DIR_ERROR = "--evidence-dir não pode ser vazio."
+
+
+def _normalize_evidence_dir(value: str) -> str:
+    directory = value.strip()
+    if not directory:
+        raise ValueError(_EMPTY_EVIDENCE_DIR_ERROR)
+    return directory
+
+
+def _parse_evidence_dir(value: str) -> str:
+    try:
+        return _normalize_evidence_dir(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(str(exc)) from exc
+
 
 def _parse_args(argv=None) -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Munck Safety System — Fase 2")
     p.add_argument("--config", default="config/example.json")
     p.add_argument("--source", default=None,
                    help="Sobrescreve source da camera 0")
+    p.add_argument("--evidence-dir", default=None,
+                   type=_parse_evidence_dir,
+                   help="Sobrescreve o diretorio de snapshots, eventos e banco SQLite")
     p.add_argument("--operation-active", action="store_true")
     p.add_argument("--show-preview", action="store_true")
     return p.parse_args(argv)
 
 
+def _configure_evidence_dir(cfg: Config, evidence_dir: str | None) -> None:
+    """Override artifact storage in place; place the SQLite DB under the same directory."""
+    if evidence_dir is None:
+        return
+    evidence_dir = _normalize_evidence_dir(evidence_dir)
+    directory = Path(evidence_dir)
+    cfg.alarm.artifacts_dir = str(directory)
+    cfg.dashboard.db_path = str(directory / _EVENT_DB_FILENAME)
+
+
 def main(argv=None) -> int:
     args = _parse_args(argv)
     cfg = Config.from_file(args.config)
+    _configure_evidence_dir(cfg, args.evidence_dir)
     configure_logging(cfg.log_level)
 
     if args.source is not None and cfg.cameras:

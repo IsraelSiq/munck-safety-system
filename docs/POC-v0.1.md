@@ -1,51 +1,141 @@
-# POC v0.1 - Uma fonte, pessoa e zona
+# POC v0.1 — Uma câmera, uma pessoa e uma zona
 
-## Objetivo
+## Objetivo e limites
 
-Provar a regra central da Fase 1 sem depender do Munck ou de quatro cameras fisicas:
+Demonstrar a regra central da Fase 1 sem conectar o sistema ao Munck: com a
+operação ativa, uma pessoa detectada entrando na zona configurada gera
+`INTRUSION_START`, alarme de demonstração e evidência; ao sair, gera
+`INTRUSION_END`.
 
-> Se a operacao esta ativa e uma pessoa entra em uma zona de atuacao configurada, o sistema gera uma condicao de alarme e uma evidencia auditavel.
+Esta é uma prova de conceito de **sinalização**. Não controla a máquina, não é
+certificação de segurança e não deve ser usada como proteção operacional. A
+detecção genérica pode falhar por oclusão, iluminação, chuva, movimento da
+câmera e outros fatores. A detecção de EPI permanece desabilitada nesta POC;
+validá-la exige um modelo adequado e um protocolo separado.
 
-A POC e apenas de sinalizacao; nao assume controle da maquina.
+## Preparar a demonstração
 
-## Fluxo
+1. Instale o projeto e suas dependências no ambiente Python:
 
-1. Abrir uma fonte de video: arquivo, webcam ou RTSP.
-2. Executar deteccao da classe `person`.
-3. Acompanhar pessoas com um `track_id` temporario quando o tracker estiver habilitado.
-4. Usar o ponto inferior central da caixa como aproximacao dos pes.
-5. Testar o ponto contra o poligono configurado.
-6. Confirmar a entrada por uma janela temporal e respeitar cooldown/histerese.
-7. Quando houver entrada durante operacao ativa, emitir `PERSON_ENTERED_OPERATION_ZONE`.
-8. Salvar snapshot e JSON do evento.
+   ```bash
+   python -m pip install -e .
+   ```
 
-O alarme sonoro deve ser representado inicialmente por um `AlarmSink` de console ou simulador. A integracao com sirene fisica fica fora da POC.
+2. Grave ou obtenha vídeos de uso autorizado com uma câmera fixa e uma pessoa
+   real. Para a sequência principal, use uma pessoa visível que começa fora da
+   zona, entra nela, permanece alguns instantes e sai. Inclua alguns segundos
+   de imagem após a saída, com pelo menos cinco frames utilizáveis fora da zona
+   (`hysteresis_frames` da configuração), para que o sistema possa confirmar
+   `INTRUSION_END`. Prepare também, se possível, vídeos separados de uma pessoa
+   que permanece fora da zona e de uma pessoa na zona com a operação inativa.
+   Não publique imagens sem autorização dos participantes.
 
-## Configuracao
+   Use vídeo real controlado como evidência principal. O script
+   `scripts/generate_test_videos.py` desenha retângulos e serve apenas para
+   verificar visualmente o fluxo; não valida a capacidade do detector.
 
-As coordenadas do poligono sao normalizadas entre 0 e 1: `[x, y]`. Isso permite reutilizar a configuracao quando a resolucao do stream mudar.
+3. Calibre o polígono em `config/poc-single-camera.json` para o enquadramento
+   utilizado. Os pontos são coordenadas normalizadas de 0 a 1; os valores
+   incluídos são apenas um exemplo e não representam uma zona real de operação.
 
-A zona da POC e estatica e deve ser calibrada manualmente na imagem. Zonas dependentes da posicao da lanca, calibracao 3D ou correlacao entre cameras ficam fora deste marco.
+4. O dashboard nesta configuração escuta somente em `127.0.0.1`. Mantenha-o
+   nessa interface durante a demonstração: o servidor não tem autenticação.
+   Não altere o host para `0.0.0.0` nem exponha a porta 8080 à rede pública.
 
-A operacao deve ser um estado explicito. `--operation-active` habilita a regra critica; sem esse estado, uma pessoa na zona nao dispara intrusao sonora.
+Para usar a webcam definida como fonte padrão, omita `--source`: o valor `"0"`
+da configuração é convertido no índice inteiro da webcam pelo capturador.
 
-## Criterios de aceite
+## Executar os cenários
 
-- O processo inicia com arquivo, webcam ou RTSP.
-- Uma pessoa fora da zona nao gera intrusao.
-- Uma pessoa que entra na zona durante operacao ativa gera um evento por entrada, nao um evento por frame.
-- Uma pessoa na zona durante operacao inativa nao gera alarme critico.
-- Perda ou encerramento da fonte termina com falha clara, sem simular sucesso.
-- O comportamento e repetivel em videos deterministas e webcam.
+### Positivo: fora → dentro → fora, operação ativa
 
-## Validacao sem hardware
+Com um vídeo controlado chamado `videos/poc_entrada_saida.mp4`:
 
-Executar com videos proprios/licenciados, webcam, quatro arquivos como fontes virtuais e RTSP local simulado. Videos gerados por IA podem ajudar em testes visuais, mas nao devem ser a evidencia principal de desempenho.
+```bash
+python -m munck_safety.app \
+  --config config/poc-single-camera.json \
+  --source videos/poc_entrada_saida.mp4 \
+  --operation-active \
+  --evidence-dir artifacts/poc-entrada-saida
+```
 
-## YOLO-Pose e MediaPipe
+`--evidence-dir` define onde serão gravados o JSONL, os snapshots e o SQLite.
+Confirme no dashboard ou no log que `INTRUSION_END` foi emitido **antes** de
+interromper o processo; se o vídeo terminar antes disso, a rodada não
+demonstrou o encerramento da intrusão.
 
-A baseline e detector de pessoa + tracking. YOLO-Pose deve ser comparado quando houver necessidade de keypoints, oclusao ou associacao de EPI. MediaPipe pode ser usado em experimento de webcam, mas nao e requisito multicamera no Jetson.
+Ao chegar ao fim de um arquivo, a thread de captura registra `video_finished`
+e termina, mas o loop principal do app permanece ativo. Após confirmar os
+eventos esperados (ou registrar a rodada como incompleta), pressione `Ctrl+C`
+para encerrar o processo.
 
-## Riscos
+### Negativo: pessoa fora da zona, operação ativa
 
-A POC nao e certificacao de seguranca. O modelo generico pode falhar em oclusao, chuva, noite, vibracao e EPIs. A imagem do IM-45 permite modelagem conceitual, mas nao define sozinha estabilizadores, cameras, margem ou zona final.
+Use um vídeo real em que a pessoa permaneça fora do polígono:
+
+```bash
+python -m munck_safety.app \
+  --config config/poc-single-camera.json \
+  --source videos/poc_fora_zona.mp4 \
+  --operation-active \
+  --evidence-dir artifacts/poc-fora-zona
+```
+
+Resultado esperado: nenhum `INTRUSION_START` para essa passagem.
+
+### Negativo: pessoa na zona, operação inativa
+
+Execute sem `--operation-active` com uma pessoa visível na zona:
+
+```bash
+python -m munck_safety.app \
+  --config config/poc-single-camera.json \
+  --source videos/poc_dentro_sem_operacao.mp4 \
+  --evidence-dir artifacts/poc-sem-operacao
+```
+
+Resultado esperado: nenhum `INTRUSION_START`. Podem existir eventos
+informativos/de saúde, que não são alarmes de intrusão.
+
+Todos os cenários usam a mesma configuração calibrada e fornecem um diretório
+de evidências diferente na linha de comando; o banco SQLite será criado como
+`events.db` dentro dele. Execute uma demonstração por vez, pois todas usam a
+porta 8080 para o dashboard. Não apague as evidências até confirmar que há cópia.
+
+## Conferir e registrar evidências
+
+- Abra `http://127.0.0.1:8080` na máquina que executa a POC e confirme os
+  eventos no dashboard.
+- Confira `events.jsonl`, `events.db` e os snapshots na pasta passada a
+  `--evidence-dir` para cada cenário (`artifacts/poc-entrada-saida/`,
+  `artifacts/poc-fora-zona/` ou `artifacts/poc-sem-operacao/`).
+- No cenário positivo, procure `INTRUSION_START` e `INTRUSION_END`, além do
+  snapshot JPG associado ao início da intrusão.
+- Registre para cada cenário: vídeo/fonte, configuração e zona usadas,
+  horários, eventos esperados e observados, snapshots e qualquer falha ou
+  detecção perdida.
+- Faça várias passagens e teste os negativos; uma demonstração visual isolada
+  não estima taxa de falsos positivos/negativos nem comprova desempenho em
+  campo.
+
+O alarme sonoro depende do dispositivo de áudio e pode degradar para um beep
+de terminal. A POC não integra sirene física.
+
+## Critérios de aceite da demonstração
+
+- A câmera e o detector iniciam com a fonte escolhida.
+- Com operação ativa, uma entrada confirmada gera `INTRUSION_START` uma vez,
+  evidência e, após a saída confirmada, `INTRUSION_END`.
+- A passagem inteiramente fora da zona não gera `INTRUSION_START`.
+- Uma pessoa na zona com operação inativa não gera `INTRUSION_START`.
+- Os eventos e snapshots podem ser conferidos no dashboard e nos arquivos
+  locais.
+- Falhas, perda de detecção e resultados divergentes são registrados como
+  limitações/falhas da rodada, não apresentados como sucesso.
+
+## Próximas validações
+
+Após a POC controlada, repetir com webcam/RTSP e diferentes condições de
+iluminação, oclusão e movimento de câmera. Validar quatro câmeras, hardware
+Jetson, calibração física da área de risco e EPI em etapas independentes antes
+de qualquer decisão de uso operacional.
