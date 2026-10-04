@@ -1,13 +1,14 @@
-﻿# ROADMAP — MUNCK Safety System
+# ROADMAP — MUNCK Safety System
 
 > Estado: **v0.2.0 PRODUCTION READY**  
-> Data: 27/09/2026  
+> Data: 04/10/2026  
 > Próximo Release: **v0.3.0** (otimizações) → **v1.0.0** (Jetson)
 
 ## 📊 Timeline
 
-AGORA (27/09):     v0.2.0: PRODUCTION
+AGORA (04/10):     v0.2.0: PRODUCTION
    └─ Demo executiva em nuvem ✅
+   └─ POC single-camera + `--evidence-dir` ✅
    
 PRÓXIMAS 2 SEMANAS:    v0.3.0: OTIMIZAÇÕES
    └─ Task 1: ByteTrack otimizado
@@ -28,8 +29,10 @@ QUANDO JETSON CHEGAR:     v1.0.0: DEPLOYMENT
 - [x] Event store estruturado (events.jsonl + SQLite)
 - [x] Dashboard web local (HTTP API)
 - [x] Dashboard em nuvem (React + Vercel)
+- [x] Workflow POC single-camera (PR #5, 04/10/2026)
+- [x] Validação/normalização de `--evidence-dir`
 
-## 🎯 v0.3.0: OTIMIZAÇÕES (2 semanas)
+## 🎯 v0.3.0: OTIMIZAÇÕES (próximo passo confirmado, ~2 semanas)
 
 ### Task 1: ByteTrack Otimizado
 **Objetivo:** Reduzir CPU em 30%

@@ -121,6 +121,21 @@ Inconclusivo não gera `PPE_NON_COMPLIANT` — apenas ausência confirmada por j
 
 ---
 
+## Captura e armazenamento de evidências
+
+Ao detectar um evento, o `AlarmManager` grava o snapshot JPG e uma linha em
+`events.jsonl` em `alarm.artifacts_dir` e então persiste o evento no `EventStore`
+(`dashboard.db_path`). O `DashboardServer` serve os snapshots do mesmo diretório.
+
+### Normalização e validação de `--evidence-dir`
+
+Em `app.py`, `_parse_evidence_dir` aplica `strip()` ao valor e rejeita vazio
+(`argparse.ArgumentTypeError`). `_configure_evidence_dir` normaliza novamente
+(defesa em profundidade; `ValueError` se vazio) e define
+`alarm.artifacts_dir = <dir>` e `dashboard.db_path = <dir>/events.db`, de modo que
+todas as evidências de uma rodada ficam no mesmo diretório. Sem a flag, valem
+os caminhos da configuração.
+
 ## Fluxo de dados por frame
 
 ```

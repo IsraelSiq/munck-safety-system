@@ -1,5 +1,7 @@
 # POC v0.1 — Uma câmera, uma pessoa e uma zona
 
+> Guia prático do workflow POC single-camera (v0.2.0).
+
 ## Objetivo e limites
 
 Demonstrar a regra central da Fase 1 sem conectar o sistema ao Munck: com a
@@ -44,6 +46,26 @@ validá-la exige um modelo adequado e um protocolo separado.
 
 Para usar a webcam definida como fonte padrão, omita `--source`: o valor `"0"`
 da configuração é convertido no índice inteiro da webcam pelo capturador.
+
+## Calibrar a zona
+
+Use a ferramenta interativa sobre a mesma fonte que será usada na POC:
+
+```bash
+python scripts/calibrate_zone.py --source videos/poc_entrada_saida.mp4 --camera-id cam_poc
+```
+
+Clique para adicionar vértices, `Backspace` remove o último, `Enter` salva e
+`ESC` cancela. Copie o polígono normalizado (0 a 1) para `zones` em
+`config/poc-single-camera.json` e confira que o `camera_id` coincide com o da
+câmera configurada. Refaça a calibração se o enquadramento mudar.
+
+## Usar `--evidence-dir`
+
+`--evidence-dir <pasta>` sobrescreve onde são gravados snapshots, `events.jsonl`
+e o banco `events.db`. Espaços nas extremidades são removidos; valor vazio ou só
+com espaços é rejeitado com erro de CLI (`--evidence-dir não pode ser vazio.`).
+Use uma pasta por rodada para não misturar evidências.
 
 ## Executar os cenários
 
