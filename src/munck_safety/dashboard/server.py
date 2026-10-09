@@ -144,12 +144,7 @@ function handleEvent(ev) {
   const msg = ev.message || '';
   const ts = (ev.ts || ev.timestamp || new Date().toISOString()).replace('T', ' ').slice(0, 19);
 
-  // Registrar câmera
-  if (cam && !cameras.has(cam)) {
-    cameras.add(cam);
-    addCamera(cam);
-    document.getElementById('s-cameras').textContent = cameras.size;
-  }
+  // Câmeras são descobertas via /api/summary (polling), não via eventos
 
   if (type === 'INTRUSION_START') {
     intrusions++;
@@ -208,18 +203,19 @@ function updateStats() {
     const i = d.by_kind && d.by_kind['INTRUSION_START'];
     if (i !== undefined) document.getElementById('s-intrusions').textContent = i;
     document.getElementById('status').textContent = 'Atualizado ' + new Date().toLocaleTimeString('pt-BR');
+    // Descobre câmeras com frames disponíveis
+    if (d.cameras) {
+      d.cameras.forEach(c => {
+        if (!cameras.has(c)) { cameras.add(c); addCamera(c); }
+      });
+      document.getElementById('s-cameras').textContent = cameras.size;
+    }
   }).catch(() => {});
 }
 
 connectSSE();
 setInterval(updateStats, 5000);
-updateStats();
-
-// Detectar câmeras existentes via summary
-fetch('/api/summary').then(r => r.json()).then(d => {
-  if (d.cameras) d.cameras.forEach(c => { if (!cameras.has(c)) { cameras.add(c); addCamera(c); } });
-  document.getElementById('s-cameras').textContent = cameras.size;
-}).catch(() => {});
+updateStats(); // chama imediatamente — descobre câmeras e stats iniciais
 </script>
 </body>
 </html>"""
