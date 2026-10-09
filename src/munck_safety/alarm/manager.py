@@ -8,6 +8,7 @@ Gerenciador de alarmes e evidências.
 from __future__ import annotations
 
 import json
+import threading
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
@@ -31,13 +32,14 @@ class AlarmManager:
         self._artifacts = Path(cfg.artifacts_dir)
         self._artifacts.mkdir(parents=True, exist_ok=True)
         self._log_path = self._artifacts / "events.jsonl"
-        self._pygame_ready = self._init_pygame()
+        self._sound_backend = self._init_sound()
 
     def handle(self, event: SafetyEvent) -> None:
         self._log_event(event)
         snapshot_path: str | None = None
         if event.kind in _ALARM_KINDS:
-            self._play_alarm()
+            # Som em thread separada para não bloquear loop principal
+            threading.Thread(target=self._play_alarm, daemon=True).start()
         if event.kind in _SNAPSHOT_KINDS and self._cfg.save_snapshots:
             snapshot_path = self._save_snapshot(event)
         if self._store is not None:
@@ -47,12 +49,14 @@ class AlarmManager:
                 log.warning("store_save_error", error=str(exc))
 
     def _play_alarm(self) -> None:
-        if self._pygame_ready:
-            self._play_file_alarm()
+        if self._sound_backend == "pygame":
+            self._play_pygame()
+        elif self._sound_backend == "winsound":
+            self._play_winsound()
         else:
             print("\a", end="", flush=True)
 
-    def _play_file_alarm(self) -> None:
+    def _play_pygame(self) -> None:
         try:
             import pygame  # type: ignore[import-untyped]
             if self._cfg.sound_file and Path(self._cfg.sound_file).exists():
@@ -63,6 +67,16 @@ class AlarmManager:
                 print("\a", end="", flush=True)
         except Exception as exc:
             log.warning("alarm_sound_error", error=str(exc))
+
+    def _play_winsound(self) -> None:
+        try:
+            import winsound
+            # Beep audível: 1000 Hz por 300ms, 3 vezes
+            for _ in range(3):
+                winsound.Beep(1000, 300)
+        except Exception as exc:
+            log.warning("alarm_winsound_error", error=str(exc))
+            print("\a", end="", flush=True)
 
     def _save_snapshot(self, event: SafetyEvent) -> str | None:
         if event.frame is None:
@@ -75,8 +89,6 @@ class AlarmManager:
             path = self._artifacts / name
             cv2.imwrite(str(path), event.frame)
             log.info("snapshot_saved", path=str(path))
-            # O store guarda o caminho relativo a artifacts_dir; o dashboard
-            # resolve o arquivo dentro desse diretorio.
             return name
         except Exception as exc:
             log.warning("snapshot_error", error=str(exc))
@@ -98,12 +110,26 @@ class AlarmManager:
         except Exception as exc:
             log.warning("event_log_error", error=str(exc))
 
-    def _init_pygame(self) -> bool:
+    def _init_sound(self) -> str:
+        """Detecta o melhor backend de som disponível."""
+        # Tenta pygame primeiro
         try:
             import pygame  # type: ignore[import-untyped]
             pygame.mixer.init()
-            return True
+            log.info("sound_backend", backend="pygame")
+            return "pygame"
         except Exception:
-            log.warning("pygame_unavailable",
-                        hint="Alarme sonoro degradado para beep de terminal.")
-            return False
+            pass
+
+        # Fallback: winsound (nativo no Windows, sem pip)
+        try:
+            import winsound  # type: ignore[import-untyped]
+            log.info("sound_backend", backend="winsound")
+            return "winsound"
+        except ImportError:
+            pass
+
+        # Último recurso: beep de terminal
+        log.warning("sound_backend", backend="terminal_beep",
+                    hint="Instale pygame para alarme sonoro completo.")
+        return "beep"

@@ -11,6 +11,8 @@ Endpoints:
   GET  /api/summary             → contagens por kind/severity + recentes
   GET  /api/export.csv          → exportação CSV
   GET  /snapshots/<file>        → serve snapshot de evidência
+  GET  /camera/<id>/stream      → MJPEG stream da câmera (frames do YOLO)
+  GET  /events/stream           → SSE stream de eventos em tempo real
 
 Acesso: somente rede local — não expor à internet.
 """
@@ -18,7 +20,9 @@ from __future__ import annotations
 
 import json
 import mimetypes
+import queue
 import threading
+import time
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -46,123 +50,258 @@ _HTML = r"""<!DOCTYPE html>
   header{background:#1e293b;padding:1rem 2rem;display:flex;align-items:center;gap:1rem;border-bottom:1px solid #334155}
   header h1{font-size:1.2rem;font-weight:700;color:#f8fafc}
   header span{font-size:.8rem;color:#64748b}
-  .pills{display:flex;gap:.5rem;flex-wrap:wrap;padding:1rem 2rem}
-  .pill{padding:.3rem .8rem;border-radius:999px;font-size:.75rem;font-weight:600;cursor:pointer;border:2px solid transparent}
-  .pill.active{border-color:#3b82f6}
-  .pill.CRITICAL{background:#7f1d1d;color:#fca5a5}
-  .pill.WARNING{background:#78350f;color:#fcd34d}
-  .pill.INFO{background:#1e3a5f;color:#93c5fd}
-  .summary{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:.75rem;padding:0 2rem 1rem}
+  #status{margin-left:auto;font-size:.75rem}
+  .ok{color:#4ade80} .warn{color:#fb923c} .err{color:#f87171}
+  .cameras{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:1rem;padding:1rem 2rem}
+  .cam-card{background:#1e293b;border-radius:.5rem;overflow:hidden;border:2px solid #334155}
+  .cam-card.alarm{border-color:#ef4444;box-shadow:0 0 12px #ef444480}
+  .cam-card h3{padding:.4rem .8rem;font-size:.75rem;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em}
+  .cam-card img{width:100%;display:block;background:#0f172a;min-height:180px;object-fit:contain}
+  .cam-card .cam-status{padding:.3rem .8rem;font-size:.7rem;color:#64748b}
+  .summary{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:.75rem;padding:0 2rem 1rem}
   .card{background:#1e293b;border-radius:.5rem;padding:1rem;border-left:4px solid #3b82f6}
   .card h3{font-size:.7rem;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em}
   .card p{font-size:1.6rem;font-weight:700;margin-top:.25rem}
-  .card.INTRUSION_START .card-bar{border-color:#ef4444} .card.PPE_NON_COMPLIANT .card-bar{border-color:#f59e0b}
-  table{width:100%;border-collapse:collapse;font-size:.82rem}
-  th{background:#1e293b;padding:.6rem 1rem;text-align:left;color:#94a3b8;font-weight:600;position:sticky;top:0}
-  td{padding:.55rem 1rem;border-bottom:1px solid #1e293b}
-  tr:hover td{background:#1e293b88}
-  .badge{display:inline-block;padding:.15rem .5rem;border-radius:4px;font-size:.7rem;font-weight:700}
-  .CRITICAL{background:#7f1d1d;color:#fca5a5} .WARNING{background:#78350f;color:#fcd34d} .INFO{background:#1e3a5f;color:#93c5fd}
-  .tbl-wrap{overflow-x:auto;padding:0 2rem 2rem}
-  .filters{display:flex;gap:.5rem;padding:0 2rem .75rem;flex-wrap:wrap;align-items:center}
-  .filters select,.filters input{background:#1e293b;border:1px solid #334155;color:#e2e8f0;padding:.35rem .6rem;border-radius:.35rem;font-size:.82rem}
-  .filters button{background:#3b82f6;color:#fff;border:none;padding:.35rem .9rem;border-radius:.35rem;cursor:pointer;font-size:.82rem}
-  .filters a{color:#60a5fa;font-size:.82rem;text-decoration:none}
-  .pager{display:flex;gap:.5rem;align-items:center;padding:.75rem 2rem;font-size:.82rem}
-  .pager button{background:#1e293b;border:1px solid #334155;color:#e2e8f0;padding:.3rem .7rem;border-radius:.35rem;cursor:pointer}
-  .pager button:disabled{opacity:.4;cursor:default}
-  #status{margin-left:auto;font-size:.75rem;color:#64748b}
+  .card.danger{border-left-color:#ef4444} .card.warn{border-left-color:#f59e0b}
+  .alarm-banner{display:none;background:#ef4444;color:#fff;padding:.6rem 2rem;font-weight:700;font-size:.95rem;align-items:center;gap:1rem}
+  .alarm-banner.show{display:flex}
+  .alarm-banner button{background:#fff;color:#ef4444;border:none;padding:.3rem .8rem;border-radius:.25rem;cursor:pointer;font-weight:700}
+  .log-section{padding:0 2rem 1rem}
+  .log-section h2{font-size:.8rem;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em;margin-bottom:.5rem}
+  .log-list{background:#1e293b;border-radius:.5rem;max-height:280px;overflow-y:auto;font-size:.78rem;font-family:monospace}
+  .log-item{padding:.35rem .8rem;border-bottom:1px solid #0f172a;display:flex;gap:.5rem;align-items:baseline}
+  .log-item.intrusion{background:#2d0a0a}
+  .log-item .time{color:#475569;flex-shrink:0;font-size:.7rem}
+  .log-item .badge{padding:.1rem .4rem;border-radius:3px;font-size:.65rem;font-weight:700;flex-shrink:0}
+  .INTRUSION_START .badge,.INTRUSION_END .badge{background:#ef4444;color:#fff}
+  .HEARTBEAT .badge,.SYSTEM_READY .badge{background:#1e3a5f;color:#93c5fd}
+  .STREAM_LOST .badge,.MODEL_UNAVAILABLE .badge{background:#78350f;color:#fcd34d}
+  .log-item .msg{color:#cbd5e1}
 </style>
 </head>
 <body>
 <header>
   <h1>🏗️ Munck Safety</h1>
-  <span>Dashboard de Segurança</span>
-  <span id="status">Carregando…</span>
+  <span id="conn-status" class="warn">⏳ Conectando…</span>
+  <span id="status">—</span>
 </header>
-<div class="summary" id="summary"></div>
-<div class="filters">
-  <select id="fKind"><option value="">Todos os tipos</option>
-    <option>INTRUSION_START</option><option>INTRUSION_END</option>
-    <option>PPE_NON_COMPLIANT</option><option>PPE_COMPLIANT</option>
-    <option>CAMERA_OFFLINE</option><option>MODEL_UNAVAILABLE</option>
-    <option>HEARTBEAT</option>
-  </select>
-  <select id="fSeverity"><option value="">Todas severidades</option>
-    <option>CRITICAL</option><option>WARNING</option><option>INFO</option>
-  </select>
-  <input id="fZone" placeholder="Zona…" style="width:130px">
-  <input id="fCamera" placeholder="Câmera…" style="width:130px">
-  <button onclick="load(1)">Filtrar</button>
-  <a href="/api/export.csv" id="exportLink">⬇ Exportar CSV</a>
+
+<div class="alarm-banner" id="alarm-banner">
+  <span>🚨 <span id="alarm-msg">INTRUSÃO DETECTADA</span></span>
+  <button onclick="clearAlarm()">Reconhecer</button>
 </div>
-<div class="tbl-wrap">
-<table>
-<thead><tr><th>Hora</th><th>Tipo</th><th>Severidade</th><th>Câmera</th><th>Track</th><th>Zona</th><th>Mensagem</th><th>Evidência</th></tr></thead>
-<tbody id="tbody"></tbody>
-</table>
+
+<div class="cameras" id="cameras"></div>
+
+<div class="summary">
+  <div class="card danger"><h3>Intrusões</h3><p id="s-intrusions">0</p></div>
+  <div class="card warn"><h3>Câmeras Online</h3><p id="s-cameras">0</p></div>
+  <div class="card"><h3>Uptime</h3><p id="s-uptime">0s</p></div>
 </div>
-<div class="pager">
-  <button id="btnPrev" onclick="changePage(-1)">◀ Anterior</button>
-  <span id="pageInfo"></span>
-  <button id="btnNext" onclick="changePage(1)">Próxima ▶</button>
+
+<div class="log-section">
+  <h2>Log de Eventos</h2>
+  <div class="log-list" id="log-list"></div>
 </div>
+
 <script>
-let currentPage=1,totalPages=1;
-function q(id){return document.getElementById(id).value}
-function esc(v){return v==null?'—':String(v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+const MAX_LOG = 200;
+let intrusions = 0;
+let alarmTimeout = null;
+let cameras = new Set();
+let startTime = Date.now();
+let eventSource = null;
 
-function load(page){
-  currentPage=page;
-  const params=new URLSearchParams({page,page_size:50});
-  if(q('fKind'))params.set('kind',q('fKind'));
-  if(q('fSeverity'))params.set('severity',q('fSeverity'));
-  if(q('fZone'))params.set('zone_id',q('fZone'));
-  if(q('fCamera'))params.set('camera_id',q('fCamera'));
-  fetch('/api/events?'+params).then(r=>r.json()).then(data=>{
-    totalPages=data.pages;
-    document.getElementById('pageInfo').textContent=`Pág ${data.page} de ${data.pages} (${data.total} eventos)`;
-    document.getElementById('btnPrev').disabled=page<=1;
-    document.getElementById('btnNext').disabled=page>=data.pages;
-    const tbody=document.getElementById('tbody');
-    tbody.innerHTML=data.items.map(e=>`
-      <tr>
-        <td>${esc(String(e.ts).replace('T',' ').slice(0,19))}</td>
-        <td>${esc(e.kind)}</td>
-        <td><span class="badge ${esc(e.severity)}">${esc(e.severity)}</span></td>
-        <td>${esc(e.camera_id)}</td>
-        <td>${e.track_id!=null?esc(e.track_id):'—'}</td>
-        <td>${esc(e.zone_id)}</td>
-        <td>${esc(e.message)}</td>
-        <td>${e.snapshot?`<a href="/snapshots/${encodeURIComponent(e.snapshot)}" target="_blank">📷</a>`:'—'}</td>
-      </tr>`).join('');
+function connectSSE() {
+  if (eventSource) eventSource.close();
+  eventSource = new EventSource('/events/stream');
+
+  eventSource.onopen = () => {
+    document.getElementById('conn-status').textContent = '✅ Online';
+    document.getElementById('conn-status').className = 'ok';
+  };
+
+  eventSource.onerror = () => {
+    document.getElementById('conn-status').textContent = '🔴 Desconectado — reconectando…';
+    document.getElementById('conn-status').className = 'err';
+    setTimeout(connectSSE, 3000);
+  };
+
+  eventSource.addEventListener('event', (e) => {
+    const data = JSON.parse(e.data);
+    handleEvent(data);
   });
-  // Atualiza link de exportação com filtros
-  const exp=new URLSearchParams();
-  if(q('fKind'))exp.set('kind',q('fKind'));
-  document.getElementById('exportLink').href='/api/export.csv?'+exp;
+
+  eventSource.addEventListener('ping', () => {});
 }
 
-function changePage(delta){if(currentPage+delta>=1&&currentPage+delta<=totalPages)load(currentPage+delta)}
+function handleEvent(ev) {
+  const type = ev.kind || ev.event_type || '';
+  const isReplay = ev.is_replay === true;
+  const cam = ev.camera_id || '';
+  const zone = ev.zone_id || ev.zone || '';
+  const track = ev.track_id != null ? ev.track_id : '';
+  const msg = ev.message || '';
+  const ts = (ev.ts || ev.timestamp || new Date().toISOString()).replace('T', ' ').slice(0, 19);
 
-function loadSummary(){
-  fetch('/api/summary').then(r=>r.json()).then(data=>{
-    const keys=['INTRUSION_START','PPE_NON_COMPLIANT','CAMERA_OFFLINE','MODEL_UNAVAILABLE'];
-    const labels={'INTRUSION_START':'Intrusões','PPE_NON_COMPLIANT':'Violações EPI','CAMERA_OFFLINE':'Câmera Offline','MODEL_UNAVAILABLE':'Modelo Indisp.'};
-    document.getElementById('summary').innerHTML=keys.map(k=>`
-      <div class="card">
-        <h3>${labels[k]||k}</h3>
-        <p>${data.by_kind[k]||0}</p>
-      </div>`).join('');
-    document.getElementById('status').textContent='Atualizado '+new Date().toLocaleTimeString('pt-BR');
-  });
+  // Registrar câmera
+  if (cam && !cameras.has(cam)) {
+    cameras.add(cam);
+    addCamera(cam);
+    document.getElementById('s-cameras').textContent = cameras.size;
+  }
+
+  if (type === 'INTRUSION_START') {
+    intrusions++;
+    document.getElementById('s-intrusions').textContent = intrusions;
+    if (cam) document.getElementById('cam-' + cam)?.classList.add('alarm');
+    if (!isReplay) triggerAlarm('Pessoa #' + track + (cam ? ' | ' + cam : '') + (zone ? ' | ' + zone : ''));
+  }
+
+  addLog(ts, type, msg, cam, track);
 }
 
-load(1);loadSummary();
-setInterval(()=>{load(currentPage);loadSummary();},15000);
+function addCamera(camId) {
+  const div = document.createElement('div');
+  div.className = 'cam-card';
+  div.id = 'cam-' + camId;
+  div.innerHTML = '<h3>' + camId + '</h3>' +
+    '<img src="/camera/' + camId + '/stream" onerror="this.style.opacity=\'0.3\'" ' +
+    'onload="this.style.opacity=\'1\'" alt="' + camId + '">' +
+    '<div class="cam-status" id="cam-status-' + camId + '">Aguardando frames…</div>';
+  document.getElementById('cameras').appendChild(div);
+}
+
+function addLog(ts, type, msg, cam, track) {
+  const list = document.getElementById('log-list');
+  const div = document.createElement('div');
+  div.className = 'log-item ' + type;
+  div.innerHTML = '<span class="time">' + ts + '</span>' +
+    '<span class="badge">' + type + '</span>' +
+    '<span class="msg">' + (cam ? '[' + cam + '] ' : '') +
+    (track !== '' ? '#' + track + ' ' : '') + msg + '</span>';
+  list.insertBefore(div, list.firstChild);
+  while (list.children.length > MAX_LOG) list.removeChild(list.lastChild);
+}
+
+function triggerAlarm(msg) {
+  const banner = document.getElementById('alarm-banner');
+  document.getElementById('alarm-msg').textContent = '🚨 INTRUSÃO: ' + msg;
+  banner.classList.add('show');
+  try { new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAA...').play(); } catch(e) {}
+  if (alarmTimeout) clearTimeout(alarmTimeout);
+  alarmTimeout = setTimeout(clearAlarm, 10000);
+}
+
+function clearAlarm() {
+  document.getElementById('alarm-banner').classList.remove('show');
+  document.querySelectorAll('.cam-card.alarm').forEach(c => c.classList.remove('alarm'));
+  if (alarmTimeout) { clearTimeout(alarmTimeout); alarmTimeout = null; }
+}
+
+function updateStats() {
+  const uptime = Math.floor((Date.now() - startTime) / 1000);
+  const h = Math.floor(uptime / 3600), m = Math.floor((uptime % 3600) / 60), s = uptime % 60;
+  document.getElementById('s-uptime').textContent =
+    (h ? h + 'h ' : '') + (m ? m + 'm ' : '') + s + 's';
+  fetch('/api/summary').then(r => r.json()).then(d => {
+    const i = d.by_kind && d.by_kind['INTRUSION_START'];
+    if (i !== undefined) document.getElementById('s-intrusions').textContent = i;
+    document.getElementById('status').textContent = 'Atualizado ' + new Date().toLocaleTimeString('pt-BR');
+  }).catch(() => {});
+}
+
+connectSSE();
+setInterval(updateStats, 5000);
+updateStats();
+
+// Detectar câmeras existentes via summary
+fetch('/api/summary').then(r => r.json()).then(d => {
+  if (d.cameras) d.cameras.forEach(c => { if (!cameras.has(c)) { cameras.add(c); addCamera(c); } });
+  document.getElementById('s-cameras').textContent = cameras.size;
+}).catch(() => {});
 </script>
 </body>
 </html>"""
+
+
+# ---------------------------------------------------------------------------
+# Estado compartilhado de frames (thread-safe)
+# ---------------------------------------------------------------------------
+
+class FrameStore:
+    """Armazena o último frame JPEG de cada câmera para MJPEG streaming."""
+
+    def __init__(self):
+        self._lock = threading.Lock()
+        self._frames: dict[str, bytes] = {}
+
+    def put(self, camera_id: str, jpeg_bytes: bytes) -> None:
+        with self._lock:
+            self._frames[camera_id] = jpeg_bytes
+
+    def get(self, camera_id: str) -> bytes | None:
+        with self._lock:
+            return self._frames.get(camera_id)
+
+    def cameras(self) -> list[str]:
+        with self._lock:
+            return list(self._frames.keys())
+
+
+# Singleton global — o app.py importa e usa diretamente
+frame_store = FrameStore()
+
+
+# ---------------------------------------------------------------------------
+# SSE — lista de filas de clientes
+# ---------------------------------------------------------------------------
+
+class SSEBroker:
+    """Distribui eventos SSE para todos os clientes conectados."""
+
+    def __init__(self):
+        self._lock = threading.Lock()
+        self._clients: list[queue.Queue] = []
+
+    def subscribe(self) -> queue.Queue:
+        q: queue.Queue = queue.Queue(maxsize=100)
+        with self._lock:
+            self._clients.append(q)
+        return q
+
+    def unsubscribe(self, q: queue.Queue) -> None:
+        with self._lock:
+            try:
+                self._clients.remove(q)
+            except ValueError:
+                pass
+
+    def publish(self, event_dict: dict) -> None:
+        data = json.dumps(event_dict, ensure_ascii=False, default=str)
+        msg = f"event: event\ndata: {data}\n\n"
+        with self._lock:
+            dead = []
+            for q in self._clients:
+                try:
+                    q.put_nowait(msg)
+                except queue.Full:
+                    dead.append(q)
+            for q in dead:
+                self._clients.remove(q)
+
+    def ping(self) -> None:
+        msg = "event: ping\ndata: {}\n\n"
+        with self._lock:
+            for q in self._clients:
+                try:
+                    q.put_nowait(msg)
+                except queue.Full:
+                    pass
+
+
+# Singleton global
+sse_broker = SSEBroker()
 
 
 # ---------------------------------------------------------------------------
@@ -189,7 +328,10 @@ class _Handler(BaseHTTPRequestHandler):
             if path == "/" or path == "":
                 self._send_html(_HTML)
             elif path == "/api/summary":
-                self._send_json(self.store.summary())
+                data = self.store.summary()
+                # Adiciona lista de cameras conhecidas
+                data["cameras"] = frame_store.cameras()
+                self._send_json(data)
             elif path == "/api/events":
                 result = self.store.query(
                     kind=params.get("kind"),
@@ -210,11 +352,80 @@ class _Handler(BaseHTTPRequestHandler):
             elif path.startswith("/snapshots/"):
                 fname = urllib.parse.unquote(path[len("/snapshots/"):])
                 self._serve_snapshot(fname)
+            elif path.startswith("/camera/") and path.endswith("/stream"):
+                # /camera/<camera_id>/stream  →  MJPEG
+                parts = path.strip("/").split("/")
+                if len(parts) == 3:
+                    self._stream_mjpeg(parts[1])
+                else:
+                    self._send(404, b"Not found", "text/plain")
+            elif path == "/events/stream":
+                self._stream_sse()
             else:
                 self._send(404, b"Not found", "text/plain")
         except Exception as exc:
             log.exception("dashboard_handler_error", path=path, error=str(exc))
-            self._send(500, b"Internal server error", "text/plain")
+            try:
+                self._send(500, b"Internal server error", "text/plain")
+            except Exception:
+                pass
+
+    def _stream_mjpeg(self, camera_id: str) -> None:
+        """Gera stream MJPEG a partir do frame_store."""
+        self.send_response(200)
+        self.send_header("Content-Type", "multipart/x-mixed-replace; boundary=frame")
+        self.send_header("Cache-Control", "no-cache")
+        self.send_header("Connection", "keep-alive")
+        self.end_headers()
+        try:
+            while True:
+                jpeg = frame_store.get(camera_id)
+                if jpeg is not None:
+                    self.wfile.write(
+                        b"--frame\r\n"
+                        b"Content-Type: image/jpeg\r\n\r\n" +
+                        jpeg + b"\r\n"
+                    )
+                    self.wfile.flush()
+                time.sleep(0.05)  # ~20fps máx
+        except (BrokenPipeError, ConnectionResetError, OSError):
+            pass
+
+    def _stream_sse(self) -> None:
+        """Envia eventos em tempo real via Server-Sent Events."""
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream")
+        self.send_header("Cache-Control", "no-cache")
+        self.send_header("Connection", "keep-alive")
+        self.send_header("X-Accel-Buffering", "no")
+        self.end_headers()
+
+        # Replay de histórico
+        try:
+            recent = self.store.query(page=1, page_size=200)
+            for item in reversed(recent.get("items", [])):
+                item["is_replay"] = True
+                data = json.dumps(item, ensure_ascii=False, default=str)
+                self.wfile.write(f"event: event\ndata: {data}\n\n".encode())
+            self.wfile.flush()
+        except Exception:
+            pass
+
+        q = sse_broker.subscribe()
+        try:
+            while True:
+                try:
+                    msg = q.get(timeout=15.0)
+                    self.wfile.write(msg.encode())
+                    self.wfile.flush()
+                except queue.Empty:
+                    # Heartbeat
+                    self.wfile.write(b"event: ping\ndata: {}\n\n")
+                    self.wfile.flush()
+        except (BrokenPipeError, ConnectionResetError, OSError):
+            pass
+        finally:
+            sse_broker.unsubscribe(q)
 
     @staticmethod
     def _int_param(params: dict, name: str, default: int) -> int:
@@ -282,6 +493,7 @@ class DashboardServer:
         self._artifacts = Path(artifacts_dir)
         self._server: Optional[ThreadingHTTPServer] = None
         self._thread: Optional[threading.Thread] = None
+        self._ping_thread: Optional[threading.Thread] = None
 
     def start(self) -> None:
         handler = _Handler
@@ -297,8 +509,30 @@ class DashboardServer:
             daemon=True,
         )
         self._thread.start()
+
+        # Thread de ping SSE a cada 10s para manter conexões vivas
+        self._ping_thread = threading.Thread(
+            target=self._sse_ping_loop,
+            name="sse-ping",
+            daemon=True,
+        )
+        self._ping_thread.start()
+
         log.info("dashboard_started", host=self._cfg.host, port=self._cfg.port,
                  url=f"http://localhost:{self._cfg.port}")
+
+    def _sse_ping_loop(self) -> None:
+        while True:
+            time.sleep(10)
+            sse_broker.ping()
+
+    def push_event(self, event_dict: dict) -> None:
+        """Pusha evento para todos os clientes SSE conectados."""
+        sse_broker.publish(event_dict)
+
+    def push_frame(self, camera_id: str, jpeg_bytes: bytes) -> None:
+        """Atualiza o frame JPEG de uma câmera para MJPEG streaming."""
+        frame_store.put(camera_id, jpeg_bytes)
 
     def stop(self) -> None:
         if self._server:

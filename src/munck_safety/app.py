@@ -95,6 +95,28 @@ def main(argv=None) -> int:
 
     # --- Alarme (agora com store) ---
     alarm = AlarmManager(cfg.alarm, store=store)
+
+    # Wrapa handle do alarme para também emitir evento SSE ao dashboard
+    _original_handle = alarm.handle
+
+    def _alarm_handle_with_sse(event: SafetyEvent) -> None:
+        _original_handle(event)
+        if dashboard is not None:
+            try:
+                from datetime import datetime, timezone
+                dashboard.push_event({
+                    "ts": datetime.now(tz=timezone.utc).isoformat(),
+                    "kind": event.kind.value,
+                    "severity": event.severity.value,
+                    "camera_id": event.camera_id,
+                    "track_id": event.track_id,
+                    "zone_id": event.zone_id,
+                    "message": event.message,
+                })
+            except Exception:
+                pass
+
+    alarm.handle = _alarm_handle_with_sse
     health_monitor = HealthMonitor(cfg.health, cfg.alarm, on_event=alarm.handle)
 
     # --- Motor de regras de intrusão ---
@@ -191,6 +213,10 @@ def main(argv=None) -> int:
                     detections, frame.camera_id, frame=frame.image
                 )
 
+                # --- Envia frame processado ao dashboard (MJPEG) ---
+                if dashboard:
+                    _push_frame_to_dashboard(dashboard, frame.image, frame.camera_id, detections, cfg)
+
                 # --- Detecção e monitoramento de EPI ---
                 if ppe_detector is not None and detections:
                     ppe_results = ppe_detector.detect(
@@ -237,6 +263,33 @@ def main(argv=None) -> int:
 
     log.info("system_stopped")
     return 0
+
+
+def _push_frame_to_dashboard(dashboard, image, camera_id: str, detections: list, cfg: Config) -> None:
+    """Codifica frame com anotações como JPEG e envia ao dashboard para MJPEG."""
+    try:
+        import cv2
+        import numpy as np
+        img = image.copy()
+        h, w = img.shape[:2]
+        for det in detections:
+            if det.camera_id != camera_id:
+                continue
+            x1, y1 = int(det.bbox.x1 * w), int(det.bbox.y1 * h)
+            x2, y2 = int(det.bbox.x2 * w), int(det.bbox.y2 * h)
+            cv2.rectangle(img, (x1, y1), (x2, y2), (0, 255, 0), 2)
+            cv2.putText(img, f"#{det.track_id}", (x1, y1 - 6),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
+        for z in cfg.zones:
+            if z.camera_id != camera_id:
+                continue
+            pts = np.array([(int(p.x * w), int(p.y * h)) for p in z.points], np.int32)
+            cv2.polylines(img, [pts], True, (0, 120, 255), 2)
+        ret, buf = cv2.imencode('.jpg', img, [cv2.IMWRITE_JPEG_QUALITY, 70])
+        if ret:
+            dashboard.push_frame(camera_id, buf.tobytes())
+    except Exception:
+        pass
 
 
 def _render_preview(frame, detections: list, cfg: Config) -> None:
